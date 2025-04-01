@@ -53,7 +53,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 child: TextField(
                   decoration: InputDecoration(
-                    hintText: 'Search places...',
+                    hintText: 'Search new places...',
                     border: InputBorder.none,
                     prefixIcon: const Icon(Icons.search, color: Colors.grey),
                     contentPadding: const EdgeInsets.symmetric(vertical: 14),
