@@ -1,13 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
-  final List<String> _barberImages = const [
-    'assets/images/elite.jpg',
-    'assets/images/don_barbero.jpg',
-    'assets/images/tattoo_shop.jpg',
-    'assets/images/barbellion.jpg',
+  final List<Map<String, String>> _barberShops = const [
+    {
+      'image': 'assets/images/elite.jpg',
+      'name': 'Elite Tattoo Barber',
+      'address': 'Miranda Street, Cornelia'
+    },
+    {
+      'image': 'assets/images/don_barbero.jpg',
+      'name': 'Don Barbero', 
+      'address': 'Main Avenue, Barcelona'
+    },
+    {
+      'image': 'assets/images/barnacut.png',
+      'name': 'Barnacut',
+      'address': 'Central Square, Madrid'
+    },
+    {
+      'image': 'assets/images/barbellion.jpg',
+      'name': 'Barbellion',
+      'address': 'Riverside, Valencia'
+    },
   ];
 
   @override
@@ -20,32 +37,36 @@ class HomeScreen extends StatelessWidget {
           children: [
             // Sección superior con título
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-              child: const Column(
-                children: [
-                  Text(
-                    'Welcome',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
+              padding: const EdgeInsets.fromLTRB(16, 40, 16, 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Welcome',
+                      style: GoogleFonts.poppins(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF143E40),
+                      ),
                     ),
-                  ),
-                  Text(
-                    'to groomly!',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
+                    Text(
+                      'to groomly!',
+                      style: GoogleFonts.poppins(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF143E40),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 
             // Barra de búsqueda
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.grey[200],
@@ -68,40 +89,86 @@ class HomeScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Sección horizontal de imágenes
-                    SizedBox(
-                      height: 250,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.only(left: 16),
-                        itemCount: _barberImages.length,
-                        itemBuilder: (context, index) {
-                          return Container(
-                            width: 170,
-                            margin: const EdgeInsets.only(right: 16),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              image: DecorationImage(
-                                image: AssetImage(_barberImages[index]),
-                                fit: BoxFit.cover,
+                    // Sección horizontal de imágenes (modificada para ser clickeable)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12, bottom: 16),
+                      child: SizedBox(
+                        height: 250,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.only(left: 16),
+                          itemCount: _barberShops.length,
+                          itemBuilder: (context, index) {
+                            final shop = _barberShops[index];
+                            return GestureDetector(
+                              onTap: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  '/business',
+                                  arguments: {
+                                    'name': shop['name'],
+                                    'address': shop['address'],
+                                    'image': shop['image'],
+                                  },
+                                );
+                              },
+                              child: Container(
+                                width: 170,
+                                margin: const EdgeInsets.only(right: 16),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  image: DecorationImage(
+                                    image: AssetImage(shop['image']!),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
                     ),
 
-                    const SizedBox(height: 24),
-
-                    // Botón "LOCATE BY PROXIMITY"
+                    // Resto del código sin cambios...
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Divider(
+                              color: Colors.grey[400],
+                              thickness: 2,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              'OR',
+                              style: GoogleFonts.poppins(
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Divider(
+                              color: Colors.grey[400],
+                              thickness: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
                       child: GestureDetector(
                         onTap: () {},
                         child: Container(
-                          height: 144,
+                          height: 160,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                             image: const DecorationImage(
                               image: AssetImage('assets/images/busqueda.png'),
                               fit: BoxFit.cover,
@@ -128,16 +195,15 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
                   ],
                 ),
               ),
             ),
 
-            // Footer/Navigation Bar corregido
+            // Footer sin cambios
             Container(
-              padding: const EdgeInsets.only(top: 30, bottom: 30),
-              height: 80,
+              padding: const EdgeInsets.only(top: 20, bottom: 30),
+              height: 90,
               decoration: BoxDecoration(
                 color: Colors.white,
                 border: Border(top: BorderSide(color: Colors.grey[300]!)),
@@ -146,30 +212,41 @@ class HomeScreen extends StatelessWidget {
                 clipBehavior: Clip.none,
                 alignment: Alignment.center,
                 children: [
-                  // Solo iconos sin textos
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      Icon(Icons.home, color: Color(0xFF143E40), size: 32),
-                      Icon(Icons.home, color: Color(0xFF143E40), size: 32),
+                      IconButton(
+                        icon: Icon(Icons.home, color: const Color(0xFF143E40), size: 32),
+                        onPressed: () {},
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.search, color: const Color(0xFF143E40), size: 32),
+                        onPressed: () {},
+                      ),
                       const SizedBox(width: 60),
-                      Icon(Icons.history, color: Color(0xFF143E40), size: 32),
-                      Icon(Icons.person, color: Color(0xFF143E40), size: 32),
+                      IconButton(
+                        icon: Icon(Icons.history, color: const Color(0xFF143E40), size: 32),
+                        onPressed: () {},
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.person, color: const Color(0xFF143E40), size: 32),
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/account');
+                        },
+                      ),
                     ],
                   ),
-                  
-                  // Icono central elevado con BoxShadow corregido
                   Positioned(
                     top: -32,
                     child: Container(
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        color: Color(0xFF143E40),
+                        color: const Color(0xFF143E40),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.2), // Valor corregido
+                            color: Colors.black.withOpacity(0.2),
                             blurRadius: 6.0,
                             offset: const Offset(0, 3.0),
                           ),
