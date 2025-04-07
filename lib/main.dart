@@ -1,21 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:groomlyes/account.dart';
-import 'package:groomlyes/business.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'signin.dart';
-import 'home.dart';
+import 'package:provider/provider.dart';
+import 'supabase_config.dart';
+import 'auth_service.dart';
 import 'login.dart';
-import 'firebase_options.dart';
+import 'home.dart';
+import 'signin.dart';
+import 'business.dart';
+import 'account.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
   
-  runApp(MyApp());
+  await Supabase.initialize(
+    url: SupabaseConfig.supabaseUrl,
+    anonKey: SupabaseConfig.supabaseKey,
+  );
+
+  runApp(
+    MultiProvider(
+      providers: [
+        Provider<AuthService>(create: (_) => AuthService()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -24,38 +35,46 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Groomly',
+      title: 'Flooter',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF143E40)),
-        useMaterial3: true,
+        primaryColor: const Color(0xFF143E40),
+        scaffoldBackgroundColor: Colors.white,
+        textTheme: GoogleFonts.poppinsTextTheme(),
       ),
       home: FutureBuilder(
         future: _checkAuthStatus(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const SplashScreen();
-          } else {
-            return snapshot.data ?? HomePageWidget();
           }
+          return snapshot.data ?? const HomePageWidget();
         },
       ),
       routes: {
-        '/signin': (context) => SignInScreen(),
-        '/login': (context) => LogInScreen(),
-        '/home': (context) => HomeScreen(),
-        '/account': (context) => AccountSettingsScreen(),
-        '/business': (context) => BusinessScreen(),
+        '/signin': (context) => const SignInScreen(),
+        '/login': (context) => const LogInScreen(),
+        '/home': (context) => const HomeScreen(),
+        '/account': (context) => const AccountSettingsScreen(),
+        '/business': (context) => const BusinessScreen(),
       },
     );
   }
 
   static Future<Widget?> _checkAuthStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    final rememberMe = prefs.getBool('rememberMe') ?? false;
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (rememberMe && user != null) {
-      return HomeScreen();
+    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    final accessToken = prefs.getString('access_token');
+    
+    if (isLoggedIn && accessToken != null) {
+      try {
+        final authService = AuthService();
+        final session = await authService.getSession();
+        if (session != null) {
+          return const HomeScreen();
+        }
+      } catch (e) {
+        debugPrint('Error checking auth status: $e');
+      }
     }
     return null;
   }
@@ -93,12 +112,11 @@ class _HomePageWidgetState extends State<HomePageWidget> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(flex: 3),
-              const Text(
-                'GROOMLY',
-                style: TextStyle(
+              Text(
+                'FLOOTER',
+                style: GoogleFonts.poppins(
                   fontSize: 50,
                   color: Colors.white,
-                  fontFamily: 'Roboto',
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -110,7 +128,6 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.white,
-                    fontFamily: 'Roboto',
                   ),
                 ),
               ),
@@ -127,7 +144,13 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                       borderRadius: BorderRadius.circular(50),
                     ),
                   ),
-                  child: const Text('Sign up', style: TextStyle(fontSize: 16)),
+                  child: Text(
+                    'Sign up',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
               Padding(
@@ -143,7 +166,13 @@ class _HomePageWidgetState extends State<HomePageWidget> {
                       side: const BorderSide(color: Colors.white),
                     ),
                   ),
-                  child: const Text('Login', style: TextStyle(fontSize: 16)),
+                  child: Text(
+                    'Login',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
               const Spacer(flex: 2),

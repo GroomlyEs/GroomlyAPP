@@ -1,21 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'auth_service.dart';
 
-class AccountSettingsScreen extends StatelessWidget {
+class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({Key? key}) : super(key: key);
+
+  @override
+  _AccountSettingsScreenState createState() => _AccountSettingsScreenState();
+}
+
+class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
+  User? _currentUser;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final user = await authService.getCurrentUser();
+    
+    if (mounted) {
+      setState(() {
+        _currentUser = user;
+        _isLoading = false;
+      });
+    }
+  }
 
   Future<void> _logout(BuildContext context) async {
     try {
-      // Cerrar sesión en Firebase
-      await FirebaseAuth.instance.signOut();
+      final authService = Provider.of<AuthService>(context, listen: false);
+      await authService.signOut();
       
-      // Eliminar preferencia "rememberMe"
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('rememberMe');
       
-      // Navegar a la pantalla de login
       Navigator.pushNamedAndRemoveUntil(
         context, 
         '/login', 
@@ -30,10 +56,15 @@ class AccountSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final userName = user?.displayName ?? 'Usuario';
-    final userEmail = user?.email ?? '';
-    final userPhoto = user?.photoURL;
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final userName = _currentUser?.email?.split('@').first ?? 'Usuario';
+    final userEmail = _currentUser?.email ?? '';
+    final userPhoto = _currentUser?.userMetadata?['avatar_url'] as String?;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -57,7 +88,6 @@ class AccountSettingsScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Encabezado de usuario mejorado
             Padding(
               padding: const EdgeInsets.all(20.0),
               child: Column(
@@ -67,7 +97,7 @@ class AccountSettingsScreen extends StatelessWidget {
                     backgroundColor: const Color(0xFF143E40).withOpacity(0.1),
                     backgroundImage: userPhoto != null 
                         ? NetworkImage(userPhoto) 
-                        : const AssetImage('assets/images/user_profile.png') as ImageProvider,
+                        : null,
                     child: userPhoto == null 
                         ? Icon(Icons.person, size: 40, color: const Color(0xFF143E40))
                         : null,
@@ -95,7 +125,6 @@ class AccountSettingsScreen extends StatelessWidget {
               ),
             ),
 
-            // Lista de opciones con logout
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -153,74 +182,12 @@ class AccountSettingsScreen extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Footer consistente
-            Container(
-              padding: const EdgeInsets.only(top: 20, bottom: 30),
-              height: 90,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey[300]!)),
-              ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.home, color: const Color(0xFF143E40), size: 32),
-                        onPressed: () => Navigator.pushNamed(context, '/home'),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.search, color: const Color(0xFF143E40), size: 32),
-                        onPressed: () {},
-                      ),
-                      const SizedBox(width: 60),
-                      IconButton(
-                        icon: Icon(Icons.history, color: const Color(0xFF143E40), size: 32),
-                        onPressed: () {},
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.person, color: const Color(0xFF143E40), size: 32),
-                        onPressed: () {},
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    top: -32,
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF143E40),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 6.0,
-                            offset: const Offset(0, 3.0),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.search,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  // Widget reutilizable para ítems de configuración
   Widget _buildSettingItem({
     required IconData icon,
     required String title,
