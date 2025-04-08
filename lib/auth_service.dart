@@ -112,4 +112,6 @@ class AuthService {
       throw Exception('Logout failed: ${e.toString()}');
     }
   }
+
+  hasValidSession() {}
 }
