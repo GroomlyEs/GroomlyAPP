@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'business_service.dart';
+import 'reservations_history.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -15,6 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<List<Map<String, dynamic>>> _businessesFuture;
   final PageController _pageController = PageController(viewportFraction: 0.8);
   int _currentPage = 0;
+  int _activeReservationsCount = 0;
 
   @override
   void initState() {
@@ -25,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _currentPage = _pageController.page?.round() ?? 0;
       });
     });
+    _loadActiveReservationsCount();
   }
 
   Future<List<Map<String, dynamic>>> _fetchBusinesses() async {
@@ -40,10 +44,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadActiveReservationsCount() async {
+    final session = _supabase.auth.currentSession;
+    if (session != null) {
+      final businessService = Provider.of<BusinessService>(context, listen: false);
+      final appointments = await businessService.getUserActiveAppointments(session.user.id);
+      setState(() {
+        _activeReservationsCount = appointments.length;
+      });
+    }
+  }
+
   Future<void> _refreshBusinesses() async {
     setState(() {
       _businessesFuture = _fetchBusinesses();
     });
+    await _loadActiveReservationsCount();
   }
 
   @override
@@ -269,9 +285,44 @@ class _HomeScreenState extends State<HomeScreen> {
                         onPressed: () {},
                       ),
                       const SizedBox(width: 60),
-                      IconButton(
-                        icon: const Icon(Icons.history, color: Color(0xFF143E40), size: 32),
-                        onPressed: () {},
+                      Stack(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.calendar_today, color: Color(0xFF143E40), size: 32),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ReservationsHistoryScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          if (_activeReservationsCount > 0)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: Text(
+                                  '$_activeReservationsCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       IconButton(
                         icon: const Icon(Icons.person, color: Color(0xFF143E40), size: 32),

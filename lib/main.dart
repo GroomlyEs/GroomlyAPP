@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:groomlyes/business_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'supabase_config.dart';
 import 'auth_service.dart';
 import 'login.dart';
@@ -10,19 +13,23 @@ import 'home.dart';
 import 'signin.dart';
 import 'business.dart';
 import 'account.dart';
+import 'reservations_history.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   await Supabase.initialize(
     url: SupabaseConfig.supabaseUrl,
     anonKey: SupabaseConfig.supabaseKey,
   );
 
+  await initializeDateFormatting('es_ES', null);
+
   runApp(
     MultiProvider(
       providers: [
         Provider<AuthService>(create: (_) => AuthService()),
+        Provider<BusinessService>(create: (_) => BusinessService()),
       ],
       child: const MyApp(),
     ),
@@ -36,11 +43,21 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flooter',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primaryColor: const Color(0xFF143E40),
         scaffoldBackgroundColor: Colors.white,
         textTheme: GoogleFonts.poppinsTextTheme(),
       ),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('es', 'ES'),
+        Locale('en', 'US'),
+      ],
       home: FutureBuilder(
         future: _checkAuthStatus(),
         builder: (context, snapshot) {
@@ -56,6 +73,7 @@ class MyApp extends StatelessWidget {
         '/home': (context) => const HomeScreen(),
         '/account': (context) => const AccountSettingsScreen(),
         '/business': (context) => const BusinessScreen(),
+        '/reservations': (context) => const ReservationsHistoryScreen(),
       },
     );
   }
