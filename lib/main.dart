@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:geolocator/geolocator.dart';
 import 'supabase_config.dart';
 import 'auth_service.dart';
 import 'login.dart';
@@ -14,6 +15,7 @@ import 'signin.dart';
 import 'business.dart';
 import 'account.dart';
 import 'reservations_history.dart';
+import 'map_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +26,9 @@ void main() async {
   );
 
   await initializeDateFormatting('es_ES', null);
+  
+  // Solicitar permisos de ubicación al iniciar
+  await Geolocator.requestPermission();
 
   runApp(
     MultiProvider(
@@ -42,7 +47,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flooter',
+      title: 'Groomly ES',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primaryColor: const Color(0xFF143E40),
@@ -74,6 +79,7 @@ class MyApp extends StatelessWidget {
         '/account': (context) => const AccountSettingsScreen(),
         '/business': (context) => const BusinessScreen(),
         '/reservations': (context) => const ReservationsHistoryScreen(),
+        '/map': (context) => const MapScreen(),
       },
     );
   }
@@ -131,7 +137,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
             children: [
               const Spacer(flex: 3),
               Text(
-                'FLOOTER',
+                'GROOMLY ES',
                 style: GoogleFonts.poppins(
                   fontSize: 50,
                   color: Colors.white,
