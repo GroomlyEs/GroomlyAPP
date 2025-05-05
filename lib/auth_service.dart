@@ -3,29 +3,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
+  String? _userRole;
 
   Future<AuthResponse?> signUpWithEmail(
     String email,
     String password,
     String firstName,
-    String lastName,
-  ) async {
+    String lastName, {
+    String role = 'user',
+  }) async {
     try {
-      // 1. Registrar usuario en Auth
       final authResponse = await _supabase.auth.signUp(
         email: email,
         password: password,
-        data: {
-          'first_name': firstName,
-          'last_name': lastName,
-        },
+        data: {'first_name': firstName, 'last_name': lastName},
       );
 
       if (authResponse.user == null) {
-        throw Exception('User registration failed - no user returned');
+        throw Exception('User registration failed');
       }
 
-      // 2. Autenticar inmediatamente después del registro
       final loginResponse = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
@@ -35,14 +32,14 @@ class AuthService {
         throw Exception('Authentication failed after sign up');
       }
 
-      // 3. Guardar sesión localmente
-      await _saveSessionData(loginResponse.session!);
+      _userRole = role;
+      await _saveSessionData(loginResponse.session!, role);
 
-      // 4. Crear perfil en la tabla user_profiles
       final profileResponse = await _supabase.from('user_profiles').insert({
         'user_id': authResponse.user!.id,
         'first_name': firstName,
         'last_name': lastName,
+        'role': role,
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       }).select();
@@ -56,7 +53,6 @@ class AuthService {
     } on AuthException catch (e) {
       throw AuthException(e.message);
     } catch (e) {
-      // Limpiar cualquier estado en caso de error
       await _supabase.auth.signOut();
       await _clearSessionData();
       throw Exception('Registration failed: ${e.toString()}');
@@ -87,7 +83,14 @@ class AuthService {
       );
 
       if (response.session != null) {
-        await _saveSessionData(response.session!);
+        final userData = await _supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('user_id', response.session!.user.id)
+            .single();
+        
+        _userRole = userData['role'] as String? ?? 'user';
+        await _saveSessionData(response.session!, _userRole!);
       }
 
       return response;
@@ -102,20 +105,23 @@ class AuthService {
     try {
       await _supabase.auth.signOut();
       await _clearSessionData();
+      _userRole = null;
     } catch (e) {
       throw Exception('Logout failed: ${e.toString()}');
     }
   }
 
-  Future<void> _saveSessionData(Session session) async {
+  Future<void> _saveSessionData(Session session, String role) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', session.accessToken);
     await prefs.setBool('isLoggedIn', true);
+    await prefs.setString('user_role', role);
   }
 
   Future<void> _clearSessionData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
+    await prefs.remove('user_role');
     await prefs.setBool('isLoggedIn', false);
   }
 
@@ -124,9 +130,11 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('access_token');
       final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+      final role = prefs.getString('user_role');
 
-      if (isLoggedIn && accessToken != null) {
+      if (isLoggedIn && accessToken != null && role != null) {
         final session = await getSession();
+        _userRole = role;
         return session != null && session.accessToken == accessToken;
       }
       return false;
@@ -139,6 +147,7 @@ class AuthService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final accessToken = prefs.getString('access_token');
+      _userRole = prefs.getString('user_role');
 
       if (accessToken != null) {
         await _supabase.auth.recoverSession(accessToken);
@@ -154,6 +163,7 @@ class AuthService {
     String? lastName,
     String? phone,
     String? avatarUrl,
+    String? role,
   }) async {
     try {
       final updateData = {
@@ -161,6 +171,7 @@ class AuthService {
         if (lastName != null) 'last_name': lastName,
         if (phone != null) 'phone': phone,
         if (avatarUrl != null) 'avatar_url': avatarUrl,
+        if (role != null) 'role': role,
         'updated_at': DateTime.now().toIso8601String(),
       };
 
@@ -172,8 +183,49 @@ class AuthService {
       if (response.error != null) {
         throw Exception('Error updating profile: ${response.error!.message}');
       }
+
+      if (role != null) {
+        _userRole = role;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_role', role);
+      }
     } catch (e) {
       throw Exception('Profile update failed: ${e.toString()}');
+    }
+  }
+
+  String? get userRole => _userRole;
+
+  Future<bool> isEmployee() async {
+    if (_userRole == null) {
+      await recoverSession();
+    }
+    return _userRole == 'employee';
+  }
+
+  Future<bool> isUser() async {
+    if (_userRole == null) {
+      await recoverSession();
+    }
+    return _userRole == 'user' || _userRole == null;
+  }
+
+  Future<void> updateUserRole(String userId, String newRole) async {
+    try {
+      final response = await _supabase
+          .from('user_profiles')
+          .update({'role': newRole})
+          .eq('user_id', userId);
+
+      if (response.error != null) {
+        throw Exception('Error updating role: ${response.error!.message}');
+      }
+
+      _userRole = newRole;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_role', newRole);
+    } catch (e) {
+      throw Exception('Role update failed: ${e.toString()}');
     }
   }
 }

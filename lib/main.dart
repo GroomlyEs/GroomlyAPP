@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -16,70 +18,149 @@ import 'business.dart';
 import 'account.dart';
 import 'reservations_history.dart';
 import 'map_screen.dart';
+import 'employee_home.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    // Configuración inicial con manejo de errores
+    await _initializeApp();
+    
+    runApp(
+      MultiProvider(
+        providers: [
+          Provider<AuthService>(create: (_) => AuthService()),
+          Provider<BusinessService>(create: (_) => BusinessService()),
+        ],
+        child: const GroomlyESApp(),
+      ),
+    );
+  }, (error, stack) {
+    debugPrint('Uncaught error: $error, stack: $stack');
+  });
+}
 
+Future<void> _initializeApp() async {
+  // Configuración de Supabase
   await Supabase.initialize(
     url: SupabaseConfig.supabaseUrl,
     anonKey: SupabaseConfig.supabaseKey,
-  );
-
-  await initializeDateFormatting('es_ES', null);
-  
-  // Solicitar permisos de ubicación al iniciar
-  await Geolocator.requestPermission();
-
-  runApp(
-    MultiProvider(
-      providers: [
-        Provider<AuthService>(create: (_) => AuthService()),
-        Provider<BusinessService>(create: (_) => BusinessService()),
-      ],
-      child: const MyApp(),
+    authOptions: const FlutterAuthClientOptions(
+      authFlowType: AuthFlowType.pkce,
     ),
   );
+
+  // Configuraciones adicionales
+  await initializeDateFormatting('es_ES', null);
+  await _checkLocationPermissions();
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+Future<void> _checkLocationPermissions() async {
+  final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  if (!serviceEnabled) {
+    throw Exception('Los servicios de ubicación están desactivados');
+  }
+
+  var permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.denied) {
+      throw Exception('Permisos de ubicación denegados');
+    }
+  }
+
+  if (permission == LocationPermission.deniedForever) {
+    throw Exception('Permisos de ubicación permanentemente denegados');
+  }
+}
+
+class GroomlyESApp extends StatelessWidget {
+  const GroomlyESApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Groomly ES',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primaryColor: const Color(0xFF143E40),
-        scaffoldBackgroundColor: Colors.white,
-        textTheme: GoogleFonts.poppinsTextTheme(),
-      ),
+      title: 'Groomly ES',
+      theme: _buildAppTheme(),
+      locale: const Locale('es', 'ES'),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('es', 'ES'),
-        Locale('en', 'US'),
-      ],
-      home: FutureBuilder(
-        future: _checkAuthStatus(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const SplashScreen();
-          }
-          return snapshot.data ?? const HomePageWidget();
-        },
+      supportedLocales: const [Locale('es', 'ES'), Locale('en', 'US')],
+      home: const AuthWrapper(),
+      routes: _buildAppRoutes(),
+      onGenerateRoute: _handleUnknownRoutes,
+    );
+  }
+
+  ThemeData _buildAppTheme() {
+    return ThemeData(
+      colorScheme: ColorScheme.light(
+        primary: const Color(0xFF143E40),
+        secondary: const Color(0xFF1A535C),
+        surface: Colors.white,
+        background: Colors.white,
       ),
-      routes: {
-        '/signin': (context) => const SignInScreen(),
-        '/login': (context) => const LogInScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/account': (context) => const AccountSettingsScreen(),
-        '/business': (context) => const BusinessScreen(),
-        '/reservations': (context) => const ReservationsHistoryScreen(),
-        '/map': (context) => const MapScreen(),
+      scaffoldBackgroundColor: Colors.white,
+      textTheme: GoogleFonts.poppinsTextTheme(),
+      appBarTheme: const AppBarTheme(
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.white,
+        iconTheme: IconThemeData(color: Color(0xFF143E40)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.grey[100],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Map<String, WidgetBuilder> _buildAppRoutes() {
+    return {
+      '/signin': (context) => const SignInScreen(),
+      '/login': (context) => const LogInScreen(),
+      '/home': (context) => const HomeScreen(),
+      '/employee_home': (context) => const EmployeeHomeScreen(),
+      '/account': (context) => const AccountSettingsScreen(),
+      '/business': (context) => const BusinessScreen(),
+      '/reservations': (context) => const ReservationsHistoryScreen(),
+      '/map': (context) => const MapScreen(),
+    };
+  }
+
+  Route<dynamic> _handleUnknownRoutes(RouteSettings settings) {
+    return MaterialPageRoute(
+      builder: (context) => Scaffold(
+        appBar: AppBar(),
+        body: Center(
+          child: Text('Ruta ${settings.name} no encontrada'),
+        ),
+      ),
+    );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Widget?>(
+      future: _checkAuthStatus(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SplashScreen();
+        }
+        return snapshot.data ?? const HomePageWidget();
       },
     );
   }
@@ -88,19 +169,27 @@ class MyApp extends StatelessWidget {
     final prefs = await SharedPreferences.getInstance();
     final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     final accessToken = prefs.getString('access_token');
-    
-    if (isLoggedIn && accessToken != null) {
-      try {
-        final authService = AuthService();
-        final session = await authService.getSession();
-        if (session != null) {
-          return const HomeScreen();
-        }
-      } catch (e) {
-        debugPrint('Error checking auth status: $e');
+    final userRole = prefs.getString('user_role') ?? 'user';
+
+    if (!isLoggedIn || accessToken == null) return null;
+
+    try {
+      final authService = AuthService();
+      final session = await authService.getSession();
+      
+      if (session == null) {
+        await authService.signOut();
+        return null;
       }
+
+      return userRole == 'employee' 
+          ? const EmployeeHomeScreen() 
+          : const HomeScreen();
+    } catch (e) {
+      debugPrint('Error verificando estado de autenticación: $e');
+      await AuthService().signOut();
+      return null;
     }
-    return null;
   }
 }
 
@@ -109,10 +198,32 @@ class SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF143E40),
+    return Scaffold(
+      backgroundColor: const Color(0xFF143E40),
       body: Center(
-        child: CircularProgressIndicator(color: Colors.white),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Spacer(),
+            Image.asset(
+              'assets/logo.png',
+              width: 150,
+              height: 150,
+              errorBuilder: (_, __, ___) => const Icon(Icons.pets, size: 100, color: Colors.white),
+            ),
+            const SizedBox(height: 30),
+            const CircularProgressIndicator(color: Colors.white),
+            const Spacer(),
+            Text(
+              'Cargando...',
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
@@ -126,84 +237,136 @@ class HomePageWidget extends StatefulWidget {
 }
 
 class _HomePageWidgetState extends State<HomePageWidget> {
+  bool _isLoading = false;
+
+  Future<void> _handleNavigation(Future<void> Function() navigation) async {
+    setState(() => _isLoading = true);
+    await navigation();
+    if (mounted) setState(() => _isLoading = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF143E40),
-      body: SafeArea(
-        child: Center(
+      body: Stack(
+        children: [
+          _buildMainContent(),
+          if (_isLoading) _buildLoadingOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainContent() {
+    return SafeArea(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Spacer(flex: 3),
-              Text(
-                'GROOMLY ES',
-                style: GoogleFonts.poppins(
-                  fontSize: 50,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-                child: Text(
-                  'Finding and connecting with trusted local professionals around you.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const Spacer(flex: 1),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(context, '/signin'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF143E40),
-                    minimumSize: const Size(double.infinity, 52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(50),
-                    ),
-                  ),
-                  child: Text(
-                    'Sign up',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(context, '/login'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(50),
-                      side: const BorderSide(color: Colors.white),
-                    ),
-                  ),
-                  child: Text(
-                    'Login',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              const Spacer(flex: 2),
+              const SizedBox(height: 40),
+              _buildAppLogo(),
+              const SizedBox(height: 20),
+              _buildAppTitle(),
+              _buildAppDescription(),
+              const SizedBox(height: 40),
+              _buildAuthButtons(),
+              const SizedBox(height: 40),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAppLogo() {
+    return Image.asset(
+      'assets/logo.png',
+      width: 120,
+      height: 120,
+      errorBuilder: (_, __, ___) => const Icon(Icons.pets, size: 80, color: Colors.white),
+    );
+  }
+
+  Widget _buildAppTitle() {
+    return Text(
+      'GROOMLY ES',
+      style: GoogleFonts.poppins(
+        fontSize: 36,
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 1.5,
+      ),
+    );
+  }
+
+  Widget _buildAppDescription() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+      child: Text(
+        'Conectando con profesionales locales de confianza.',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 16,
+          color: Colors.white70,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAuthButtons() {
+    return Column(
+      children: [
+        _buildAuthButton(
+          text: 'Registrarse',
+          onPressed: () => _handleNavigation(() => Navigator.pushNamed(context, '/signin')),
+          isPrimary: true,
+        ),
+        const SizedBox(height: 16),
+        _buildAuthButton(
+          text: 'Iniciar Sesión',
+          onPressed: () => _handleNavigation(() => Navigator.pushNamed(context, '/login')),
+          isPrimary: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAuthButton({
+    required String text,
+    required VoidCallback onPressed,
+    required bool isPrimary,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isPrimary ? Colors.white : Colors.transparent,
+          foregroundColor: isPrimary ? const Color(0xFF143E40) : Colors.white,
+          minimumSize: const Size(double.infinity, 52),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(50),
+            side: isPrimary ? BorderSide.none : const BorderSide(color: Colors.white),
+          ),
+          elevation: isPrimary ? 2 : 0,
+        ),
+        child: Text(
+          text,
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingOverlay() {
+    return const Center(
+      child: CircularProgressIndicator(color: Colors.white),
     );
   }
 }

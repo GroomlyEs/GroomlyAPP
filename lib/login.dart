@@ -67,7 +67,12 @@ class __LoginFormState extends State<_LoginForm> {
       );
 
       if (response != null) {
-        Navigator.pushReplacementNamed(context, '/home');
+        final isEmployee = await authService.isEmployee();
+        if (isEmployee) {
+          Navigator.pushReplacementNamed(context, '/employee_home');
+        } else {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
