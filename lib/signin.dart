@@ -30,74 +30,47 @@ class _SignInScreenState extends State<SignInScreen> {
     super.dispose();
   }
 
-  Future<void> _signUp() async {
-    if (!_formKey.currentState!.validate()) return;
+Future<void> _signUp() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+  setState(() => _isLoading = true);
 
-    try {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      
-      // Registrar usuario en Supabase
-      final response = await authService.signUpWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-        {
-          'first_name': _firstNameController.text.trim(),
-          'last_name': _lastNameController.text.trim(),
-          'avatar_url': '', // Puedes añadir una URL por defecto
-        },
-      );
+  try {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    await authService.signUpWithEmail(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+      _firstNameController.text.trim(),
+      _lastNameController.text.trim(),
+    );
 
-      if (response?.user == null) {
-        throw Exception('Registration failed');
-      }
-
-      // Mostrar mensaje de éxito
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🎉 Registration successful!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      // Navegar a la pantalla de inicio si el registro fue exitoso
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-      
-    } on AuthException catch (e) {
-      String errorMessage;
-      switch (e.statusCode) {
-        case '400':
-          errorMessage = 'Invalid email or password format';
-          break;
-        case '422':
-          errorMessage = 'Email already registered';
-          break;
-        default:
-          errorMessage = 'Registration failed: ${e.message}';
-      }
-      
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/home');
+    }
+  } on AuthException catch (e) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ $errorMessage'),
+          content: Text('Error: ${e.message}'),
           backgroundColor: Colors.red,
         ),
       );
-    } catch (e) {
+    }
+  } catch (e) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Registration failed'),
+          content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {

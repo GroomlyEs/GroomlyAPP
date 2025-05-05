@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; 
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -95,7 +95,7 @@ class _MapScreenState extends State<MapScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : FutureBuilder<List<Map<String, dynamic>>>(
+          : FutureBuilder<List<Map<String, dynamic>>>(  // FutureBuilder para cargar los datos
               future: _businessesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -117,7 +117,7 @@ class _MapScreenState extends State<MapScreen> {
                   );
                 }
 
-                final businesses = snapshot.data!;
+                final businesses = snapshot.data!;  // Lista de negocios con coordenadas
                 return _buildMap(businesses);
               },
             ),
@@ -149,8 +149,9 @@ class _MapScreenState extends State<MapScreen> {
              business['latitude'] != null && 
              business['longitude'] != null;
     }).map((business) {
-      final lat = business['latitude'] as double;
-      final lng = business['longitude'] as double;
+      // Convertir la ubicación de texto a coordenadas LatLng
+      final lat = business['latitude'] != null ? business['latitude'] : 41.3854;  // Valor predeterminado si falta
+      final lng = business['longitude'] != null ? business['longitude'] : 2.1760; // Valor predeterminado si falta
       final latLng = LatLng(lat, lng);
 
       return Marker(

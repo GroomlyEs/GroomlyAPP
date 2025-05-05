@@ -14,6 +14,7 @@ class BusinessService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
+      debugPrint('Error al obtener negocios: ${e.toString()}');
       throw Exception('Error al obtener negocios: ${e.toString()}');
     }
   }
@@ -33,6 +34,7 @@ class BusinessService {
 
       return response;
     } catch (e) {
+      debugPrint('Error al obtener detalles del negocio: ${e.toString()}');
       throw Exception('Error al obtener detalles del negocio: ${e.toString()}');
     }
   }
@@ -47,6 +49,7 @@ class BusinessService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
+      debugPrint('Error al obtener galería del negocio: ${e.toString()}');
       throw Exception('Error al obtener galería del negocio: ${e.toString()}');
     }
   }
@@ -62,6 +65,7 @@ class BusinessService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
+      debugPrint('Error al obtener barberos: ${e.toString()}');
       throw Exception('Error al obtener barberos: ${e.toString()}');
     }
   }
@@ -77,6 +81,7 @@ class BusinessService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
+      debugPrint('Error al obtener servicios: ${e.toString()}');
       throw Exception('Error al obtener servicios: ${e.toString()}');
     }
   }
@@ -124,6 +129,7 @@ class BusinessService {
 
       return appointmentId;
     } catch (e) {
+      debugPrint('Error al crear la reserva: ${e.toString()}');
       throw Exception('Error al crear la reserva: ${e.toString()}');
     }
   }
@@ -134,6 +140,9 @@ class BusinessService {
     int serviceDuration,
   ) async {
     try {
+      debugPrint('Obteniendo horarios para barbero $barberId en fecha ${date.toString()}');
+
+      // 1. Obtener horario del barbero
       final scheduleResponse = await _supabase
           .from('barber_schedule')
           .select('opens_at, closes_at, break_start, break_end')
@@ -141,14 +150,17 @@ class BusinessService {
           .eq('day_of_week', date.weekday);
 
       if (scheduleResponse.isEmpty) {
+        debugPrint('El barbero no tiene horario para este día');
         throw Exception('El barbero no tiene horario para este día');
       }
 
       final schedule = scheduleResponse[0];
       if (schedule['opens_at'] == null || schedule['closes_at'] == null) {
+        debugPrint('Horario incompleto en la base de datos');
         throw Exception('Horario incompleto en la base de datos');
       }
 
+      // Validar y parsear los tiempos
       final opensAtTime = _parseTimeString(schedule['opens_at'].toString());
       final closesAtTime = _parseTimeString(schedule['closes_at'].toString());
       final breakStartTime = schedule['break_start'] != null 
@@ -156,6 +168,9 @@ class BusinessService {
       final breakEndTime = schedule['break_end'] != null 
           ? _parseTimeString(schedule['break_end'].toString()) : null;
 
+      debugPrint('Horario: $opensAtTime - $closesAtTime, Break: $breakStartTime - $breakEndTime');
+
+      // 2. Obtener citas existentes
       final startOfDay = DateTime(date.year, date.month, date.day);
       final endOfDay = startOfDay.add(const Duration(days: 1));
 
@@ -175,6 +190,9 @@ class BusinessService {
         return {'start': start, 'end': start.add(Duration(minutes: duration))};
       }).toList();
 
+      debugPrint('Citas existentes: ${bookedSlots.length}');
+
+      // 3. Calcular horarios disponibles
       final availableSlots = <Map<String, dynamic>>[];
       DateTime currentSlot = DateTime(
         date.year, date.month, date.day,
@@ -185,16 +203,26 @@ class BusinessService {
         closesAtTime.hour, closesAtTime.minute
       );
 
+      debugPrint('Calculando horarios desde $currentSlot hasta $closingDateTime');
+
       while (currentSlot.add(Duration(minutes: serviceDuration)).isBefore(closingDateTime)) {
         final slotEnd = currentSlot.add(Duration(minutes: serviceDuration));
 
+        // Verificar si está durante el break
         bool isDuringBreak = false;
         if (breakStartTime != null && breakEndTime != null) {
-          final breakStart = DateTime(date.year, date.month, date.day, breakStartTime.hour, breakStartTime.minute);
-          final breakEnd = DateTime(date.year, date.month, date.day, breakEndTime.hour, breakEndTime.minute);
+          final breakStart = DateTime(
+            date.year, date.month, date.day, 
+            breakStartTime.hour, breakStartTime.minute
+          );
+          final breakEnd = DateTime(
+            date.year, date.month, date.day, 
+            breakEndTime.hour, breakEndTime.minute
+          );
           isDuringBreak = currentSlot.isBefore(breakEnd) && slotEnd.isAfter(breakStart);
         }
 
+        // Verificar disponibilidad
         bool isAvailable = !isDuringBreak;
         for (final booked in bookedSlots) {
           if (currentSlot.isBefore(booked['end']!) && slotEnd.isAfter(booked['start']!)) {
@@ -208,14 +236,17 @@ class BusinessService {
             'hour': currentSlot.hour,
             'minute': currentSlot.minute,
             'formatted': '${currentSlot.hour.toString().padLeft(2, '0')}:${currentSlot.minute.toString().padLeft(2, '0')}',
+            'datetime': currentSlot,
           });
         }
 
         currentSlot = currentSlot.add(const Duration(minutes: 30));
       }
 
+      debugPrint('Horarios disponibles encontrados: ${availableSlots.length}');
       return availableSlots;
     } catch (e) {
+      debugPrint('Error en getAvailableTimeSlots: ${e.toString()}');
       throw Exception('Error al obtener horarios disponibles: ${e.toString()}');
     }
   }
@@ -227,6 +258,7 @@ class BusinessService {
           .update({'status': 'cancelled'})
           .eq('id', appointmentId);
     } catch (e) {
+      debugPrint('Error al cancelar la cita: ${e.toString()}');
       throw Exception('Error al cancelar la cita: ${e.toString()}');
     }
   }
@@ -256,6 +288,7 @@ class BusinessService {
 
       return result;
     } catch (e) {
+      debugPrint('Error al obtener citas activas: ${e.toString()}');
       throw Exception('Error al obtener citas activas del usuario: ${e.toString()}');
     }
   }
@@ -263,11 +296,15 @@ class BusinessService {
   TimeOfDay _parseTimeString(String timeString) {
     try {
       final parts = timeString.split(':');
+      if (parts.length < 2) {
+        throw FormatException('Formato de tiempo inválido: $timeString');
+      }
       return TimeOfDay(
         hour: int.parse(parts[0]),
         minute: int.parse(parts[1]),
       );
     } catch (e) {
+      debugPrint('Error al parsear tiempo: $timeString. ${e.toString()}');
       throw Exception('Error al parsear tiempo: $timeString. ${e.toString()}');
     }
   }
@@ -285,7 +322,6 @@ class BusinessService {
       return businesses.map((business) {
         if (business['location'] != null) {
           try {
-            // Parsear el formato POINT(lng lat) de PostGIS
             final locationStr = business['location'].toString();
             final regex = RegExp(r'POINT\(([-\d.]+) ([-\d.]+)\)');
             final match = regex.firstMatch(locationStr);
@@ -301,6 +337,7 @@ class BusinessService {
         return business;
       }).toList();
     } catch (e) {
+      debugPrint('Error al obtener negocios con ubicación: ${e.toString()}');
       throw Exception('Error al obtener negocios con ubicación: ${e.toString()}');
     }
   }
@@ -329,6 +366,7 @@ class BusinessService {
         return distance <= radiusKm;
       }).toList();
     } catch (e) {
+      debugPrint('Error al buscar negocios cercanos: ${e.toString()}');
       throw Exception('Error al buscar negocios cercanos: ${e.toString()}');
     }
   }
@@ -350,7 +388,6 @@ class BusinessService {
       }
 
       try {
-        // Parsear el formato POINT(lng lat) de PostGIS
         final locationStr = response['location'].toString();
         final regex = RegExp(r'POINT\(([-\d.]+) ([-\d.]+)\)');
         final match = regex.firstMatch(locationStr);
@@ -364,9 +401,11 @@ class BusinessService {
 
         return _calculateDistance(userLat, userLon, businessLat, businessLon);
       } catch (e) {
+        debugPrint('Error al parsear ubicación: ${e.toString()}');
         throw Exception('Error al parsear ubicación: ${e.toString()}');
       }
     } catch (e) {
+      debugPrint('Error al calcular distancia: ${e.toString()}');
       throw Exception('Error al calcular distancia: ${e.toString()}');
     }
   }
