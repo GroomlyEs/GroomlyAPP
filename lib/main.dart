@@ -19,6 +19,7 @@ import 'account.dart';
 import 'reservations_history.dart';
 import 'map_screen.dart';
 import 'employee_home.dart';
+import 'clock_in_out_screen.dart';
 
 void main() async {
   await runZonedGuarded(() async {
@@ -100,8 +101,8 @@ class GroomlyESApp extends StatelessWidget {
   ThemeData _buildAppTheme() {
     return ThemeData(
       colorScheme: ColorScheme.light(
-        primary: const Color(0xFF143E40),
-        secondary: const Color(0xFF1A535C),
+        primary: Color(0xFF143E40),
+        secondary: Color(0xFF143E40),
         surface: Colors.white,
         background: Colors.white,
       ),
@@ -129,6 +130,7 @@ class GroomlyESApp extends StatelessWidget {
       '/signin': (context) => const SignInScreen(),
       '/login': (context) => const LogInScreen(),
       '/home': (context) => const HomeScreen(),
+      '/clock': (context) => const ClockInOutScreen(),
       '/employee_home': (context) => const EmployeeHomeScreen(),
       '/account': (context) => const AccountSettingsScreen(),
       '/business': (context) => const BusinessScreen(),
@@ -199,7 +201,7 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF143E40),
+      backgroundColor: Color(0xFF143E40),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -248,7 +250,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF143E40),
+      backgroundColor: Color(0xFF143E40),
       body: Stack(
         children: [
           _buildMainContent(),
@@ -266,8 +268,8 @@ class _HomePageWidgetState extends State<HomePageWidget> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const SizedBox(height: 40),
-              _buildAppLogo(),
+              // const SizedBox(height: 40),
+              // _buildAppLogo(),
               const SizedBox(height: 20),
               _buildAppTitle(),
               _buildAppDescription(),
@@ -281,20 +283,20 @@ class _HomePageWidgetState extends State<HomePageWidget> {
     );
   }
 
-  Widget _buildAppLogo() {
-    return Image.asset(
-      'assets/logo.png',
-      width: 120,
-      height: 120,
-      errorBuilder: (_, __, ___) => const Icon(Icons.pets, size: 80, color: Colors.white),
-    );
-  }
+  // Widget _buildAppLogo() {
+  //   return Image.asset(
+  //     'assets/images/groomly_logo.png',
+  //     width: 120,
+  //     height: 120,
+  //     errorBuilder: (_, __, ___) => const Icon(Icons.pets, size: 80, color: Colors.white),
+  //   );
+  // }
 
   Widget _buildAppTitle() {
     return Text(
       'GROOMLY ES',
       style: GoogleFonts.poppins(
-        fontSize: 36,
+        fontSize: 45,
         color: Colors.white,
         fontWeight: FontWeight.bold,
         letterSpacing: 1.5,
@@ -304,13 +306,13 @@ class _HomePageWidgetState extends State<HomePageWidget> {
 
   Widget _buildAppDescription() {
     return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Text(
-        'Conectando con profesionales locales de confianza.',
+        'Conoce nuestros competidores dentro del sector y encuentra tu estilo.',
         textAlign: TextAlign.center,
         style: TextStyle(
-          fontSize: 16,
-          color: Colors.white70,
+          fontSize: 15,
+          color: Color.fromARGB(237, 255, 255, 255),
         ),
       ),
     );
@@ -320,15 +322,15 @@ class _HomePageWidgetState extends State<HomePageWidget> {
     return Column(
       children: [
         _buildAuthButton(
-          text: 'Registrarse',
-          onPressed: () => _handleNavigation(() => Navigator.pushNamed(context, '/signin')),
-          isPrimary: true,
-        ),
-        const SizedBox(height: 16),
-        _buildAuthButton(
           text: 'Iniciar Sesión',
           onPressed: () => _handleNavigation(() => Navigator.pushNamed(context, '/login')),
           isPrimary: false,
+        ),
+        const SizedBox(height: 16),
+        _buildAuthButton(
+          text: 'Registrarse',
+          onPressed: () => _handleNavigation(() => Navigator.pushNamed(context, '/signin')),
+          isPrimary: true,
         ),
       ],
     );

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -227,5 +228,30 @@ class AuthService {
     } catch (e) {
       throw Exception('Role update failed: ${e.toString()}');
     }
+  }
+
+  Future<String?> getBarberId() async {
+    final user = await getCurrentUser();
+    if (user == null) return null;
+    
+    try {
+      final response = await _supabase
+          .from('barbers')
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
+      
+      return response['id'] as String;
+    } catch (e) {
+      debugPrint('Error getting barber ID: $e');
+      return null;
+    }
+  }
+
+  Future<bool> isBarber() async {
+    if (_userRole == null) {
+      await recoverSession();
+    }
+    return _userRole == 'barber';
   }
 }

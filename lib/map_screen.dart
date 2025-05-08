@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart'; 
+import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:latlong2/latlong.dart' as latlong;
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'business_service.dart';
@@ -16,7 +16,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   late Future<List<Map<String, dynamic>>> _businessesFuture;
-  LatLng? _currentPosition;
+  latlong.LatLng? _currentPosition;
   bool _isLoading = true;
   int _selectedRadius = 5;
 
@@ -32,7 +32,7 @@ class _MapScreenState extends State<MapScreen> {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       setState(() {
-        _currentPosition = const LatLng(41.3854, 2.1760); // Barcelona
+        _currentPosition = const latlong.LatLng(41.3854, 2.1760);
         _isLoading = false;
       });
       return;
@@ -43,7 +43,7 @@ class _MapScreenState extends State<MapScreen> {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         setState(() {
-          _currentPosition = const LatLng(41.3854, 2.1760); // Barcelona
+          _currentPosition = latlong.LatLng(41.3854, 2.1760);
           _isLoading = false;
         });
         return;
@@ -52,7 +52,7 @@ class _MapScreenState extends State<MapScreen> {
 
     if (permission == LocationPermission.deniedForever) {
       setState(() {
-        _currentPosition = const LatLng(41.3854, 2.1760); // Barcelona
+        _currentPosition = latlong.LatLng(41.3854, 2.1760);
         _isLoading = false;
       });
       return;
@@ -63,12 +63,12 @@ class _MapScreenState extends State<MapScreen> {
         desiredAccuracy: LocationAccuracy.best,
       );
       setState(() {
-        _currentPosition = LatLng(position.latitude, position.longitude);
+        _currentPosition = latlong.LatLng(position.latitude, position.longitude);
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
-        _currentPosition = const LatLng(41.3854, 2.1760); // Barcelona
+        _currentPosition = latlong.LatLng(41.3854, 2.1760);
         _isLoading = false;
       });
     }
@@ -95,7 +95,7 @@ class _MapScreenState extends State<MapScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : FutureBuilder<List<Map<String, dynamic>>>(  // FutureBuilder para cargar los datos
+          : FutureBuilder<List<Map<String, dynamic>>>(
               future: _businessesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -117,7 +117,7 @@ class _MapScreenState extends State<MapScreen> {
                   );
                 }
 
-                final businesses = snapshot.data!;  // Lista de negocios con coordenadas
+                final businesses = snapshot.data!;
                 return _buildMap(businesses);
               },
             ),
@@ -145,14 +145,13 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget _buildMap(List<Map<String, dynamic>> businesses) {
     final markers = businesses.where((business) {
-      return business['location'] != null && 
-             business['latitude'] != null && 
-             business['longitude'] != null;
+      return business['latitude'] != null && business['longitude'] != null;
     }).map((business) {
-      // Convertir la ubicación de texto a coordenadas LatLng
-      final lat = business['latitude'] != null ? business['latitude'] : 41.3854;  // Valor predeterminado si falta
-      final lng = business['longitude'] != null ? business['longitude'] : 2.1760; // Valor predeterminado si falta
-      final latLng = LatLng(lat, lng);
+      final lat = double.tryParse(business['latitude'].toString()) ?? 41.3854;
+      final lng = double.tryParse(business['longitude'].toString()) ?? 2.1760;
+      final latLng = latlong.LatLng(lat, lng);
+
+      print('Marker: ${business['name']} at $lat, $lng');
 
       return Marker(
         point: latLng,
@@ -187,7 +186,7 @@ class _MapScreenState extends State<MapScreen> {
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
-        center: _currentPosition ?? const LatLng(41.3854, 2.1760),
+        center: _currentPosition ?? latlong.LatLng(41.3854, 2.1760),
         zoom: 13,
         interactiveFlags: InteractiveFlag.all & ~InteractiveFlag.rotate,
       ),
@@ -332,14 +331,14 @@ class _MapScreenState extends State<MapScreen> {
     double? minLat, maxLat, minLng, maxLng;
 
     for (var business in businesses) {
-      if (business['latitude'] != null && business['longitude'] != null) {
-        final lat = business['latitude'] as double;
-        final lng = business['longitude'] as double;
+      final lat = double.tryParse(business['latitude'].toString());
+      final lng = double.tryParse(business['longitude'].toString());
 
-        minLat = minLat == null ? lat : (lat < minLat ? lat : minLat);
-        maxLat = maxLat == null ? lat : (lat > maxLat ? lat : maxLat);
-        minLng = minLng == null ? lng : (lng < minLng ? lng : minLng);
-        maxLng = maxLng == null ? lng : (lng > maxLng ? lng : maxLng);
+      if (lat != null && lng != null) {
+        minLat = minLat == null ? lat : min(minLat, lat);
+        maxLat = maxLat == null ? lat : max(maxLat, lat);
+        minLng = minLng == null ? lng : min(minLng, lng);
+        maxLng = maxLng == null ? lng : max(maxLng, lng);
       }
     }
 
@@ -351,8 +350,8 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     return LatLngBounds(
-      LatLng(minLat ?? 41.3854, minLng ?? 2.1760),
-      LatLng(maxLat ?? 41.3854, maxLng ?? 2.1760),
+      latlong.LatLng(minLat ?? 41.3854, minLng ?? 2.1760),
+      latlong.LatLng(maxLat ?? 41.3854, maxLng ?? 2.1760),
     );
   }
 }

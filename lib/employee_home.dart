@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
+import 'clock_in_out_screen.dart';
+import 'business_service.dart';
 
 class EmployeeHomeScreen extends StatefulWidget {
   const EmployeeHomeScreen({Key? key}) : super(key: key);
@@ -22,11 +24,25 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
   String? _barberId;
   int _retryCount = 0;
   static const maxRetries = 3;
+  Map<String, dynamic>? _currentClockStatus;
 
   @override
   void initState() {
     super.initState();
     _fetchBarberId();
+    _loadClockStatus();
+  }
+
+  Future<void> _loadClockStatus() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final barberId = await authService.getBarberId();
+    if (barberId == null) return;
+
+    final businessService = Provider.of<BusinessService>(context, listen: false);
+    final status = await businessService.getCurrentClockStatus(barberId);
+    setState(() {
+      _currentClockStatus = status;
+    });
   }
 
   Future<void> _fetchBarberId() async {
@@ -43,15 +59,18 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
 
       setState(() {
         _barberId = response['id'] as String;
-        print('Barber ID obtained: $_barberId');
       });
 
       if (_barberId != null) {
         await _fetchAppointments();
       }
     } catch (e) {
-      print('Error fetching barber ID: $e');
-      if (mounted) {
+      debugPrint('Error fetching barber ID: $e');
+      if (_retryCount < maxRetries) {
+        _retryCount++;
+        await Future.delayed(const Duration(seconds: 2));
+        await _fetchBarberId();
+      } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Error loading barber information')),
         );
@@ -94,10 +113,10 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
 
       setState(() {
         _appointments = List<Map<String, dynamic>>.from(response);
-        _retryCount = 0; // Reset retry count on success
+        _retryCount = 0;
       });
     } catch (e) {
-      print('Error fetching appointments: $e');
+      debugPrint('Error fetching appointments: $e');
       if (_retryCount < maxRetries) {
         _retryCount++;
         await Future.delayed(const Duration(seconds: 2));
@@ -120,6 +139,37 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
       appBar: AppBar(
         title: const Text('Employee Calendar'),
         actions: [
+          IconButton(
+            icon: Stack(
+              children: [
+                const Icon(Icons.timer),
+                if (_currentClockStatus != null)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 12,
+                        minHeight: 12,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ClockInOutScreen(),
+                ),
+              ).then((_) => _loadClockStatus());
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.today),
             onPressed: () {
@@ -383,7 +433,7 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
 
   Widget _buildBottomNavigationBar() {
     return BottomNavigationBar(
-      currentIndex: 0, // Set the current index as needed
+      currentIndex: 0,
       type: BottomNavigationBarType.fixed,
       items: const [
         BottomNavigationBarItem(
@@ -391,7 +441,7 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
           label: 'Calendar',
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.access_time), // New clock icon
+          icon: Icon(Icons.access_time),
           label: 'Schedule',
         ),
         BottomNavigationBarItem(
@@ -400,17 +450,12 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
         ),
       ],
       onTap: (index) {
-        // Handle navigation based on the selected index
         switch (index) {
           case 0:
-            // Already on home screen
             break;
           case 1:
-            // Handle clock/schedule icon tap
-            // You can add navigation logic here
             break;
           case 2:
-            // Handle settings icon tap
             Navigator.pushNamed(context, '/account');
             break;
         }
