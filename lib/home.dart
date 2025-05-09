@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'business_service.dart';
 import 'reservations_history.dart';
-import 'map_screen.dart';
+import 'map_screen.dart'; // Asegúrate de que este importe la clase correcta
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -24,12 +24,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _businessesFuture = _fetchBusinesses();
-    _pageController.addListener(() {
-      setState(() {
-        _currentPage = _pageController.page?.round() ?? 0;
-      });
-    });
+    _pageController.addListener(_updateCurrentPage);
     _loadActiveReservationsCount();
+  }
+
+  void _updateCurrentPage() {
+    setState(() {
+      _currentPage = _pageController.page?.round() ?? 0;
+    });
   }
 
   Future<List<Map<String, dynamic>>> _fetchBusinesses() async {
@@ -41,30 +43,42 @@ class _HomeScreenState extends State<HomeScreen> {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      throw Exception('Error fetching businesses: ${e.toString()}');
+      debugPrint('Error fetching businesses: $e');
+      throw Exception('Error al cargar negocios');
     }
   }
 
   Future<void> _loadActiveReservationsCount() async {
-    final session = _supabase.auth.currentSession;
-    if (session != null) {
-      final businessService = Provider.of<BusinessService>(context, listen: false);
-      final appointments = await businessService.getUserActiveAppointments(session.user.id);
-      setState(() {
-        _activeReservationsCount = appointments.length;
-      });
+    try {
+      final session = _supabase.auth.currentSession;
+      if (session != null) {
+        final businessService = Provider.of<BusinessService>(context, listen: false);
+        final appointments = await businessService.getUserActiveAppointments(session.user.id);
+        if (mounted) {
+          setState(() {
+            _activeReservationsCount = appointments.length;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading reservations: $e');
     }
   }
 
   Future<void> _refreshBusinesses() async {
-    setState(() {
-      _businessesFuture = _fetchBusinesses();
-    });
-    await _loadActiveReservationsCount();
+    try {
+      setState(() {
+        _businessesFuture = _fetchBusinesses();
+      });
+      await _loadActiveReservationsCount();
+    } catch (e) {
+      debugPrint('Error refreshing businesses: $e');
+    }
   }
 
   @override
   void dispose() {
+    _pageController.removeListener(_updateCurrentPage);
     _pageController.dispose();
     super.dispose();
   }
@@ -73,308 +87,328 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: null,
       body: SafeArea(
         child: Column(
           children: [
-            // Sección superior con título
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 40, 16, 20),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Welcome',
-                      style: GoogleFonts.poppins(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF143E40),
-                      ),
-                    ),
-                    Text(
-                      'to groomly!',
-                      style: GoogleFonts.poppins(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF143E40),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Barra de búsqueda
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Search new places...',
-                    border: InputBorder.none,
-                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                ),
-              ),
-            ),
-
-            // Contenido principal con scroll
+            // Header Section
+            _buildHeader(),
+            
+            // Search Bar
+            _buildSearchBar(),
+            
+            // Main Content
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refreshBusinesses,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Sección horizontal de negocios
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12, bottom: 16),
-                        child: SizedBox(
-                          height: 250,
-                          child: FutureBuilder<List<Map<String, dynamic>>>(
-                            future: _businessesFuture,
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const Center(child: CircularProgressIndicator());
-                              } else if (snapshot.hasError) {
-                                return Center(child: Text('Error: ${snapshot.error}'));
-                              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                                return const Center(child: Text('No businesses found'));
-                              }
-
-                              final businesses = snapshot.data!;
-                              return Column(
-                                children: [
-                                  SizedBox(
-                                    height: 220,
-                                    child: PageView.builder(
-                                      controller: _pageController,
-                                      itemCount: businesses.length,
-                                      itemBuilder: (context, index) {
-                                        final business = businesses[index];
-                                        return _buildBusinessCard(context, business);
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: List.generate(
-                                      businesses.length,
-                                      (index) => Container(
-                                        width: 8,
-                                        height: 8,
-                                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: _currentPage == index
-                                              ? const Color(0xFF143E40)
-                                              : Colors.grey.withOpacity(0.4),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-
-                      // Divider con "OR"
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Divider(
-                                color: Colors.grey[400],
-                                thickness: 2,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Text(
-                                'OR',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Divider(
-                                color: Colors.grey[400],
-                                thickness: 2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Botón de búsqueda por proximidad
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const MapScreen(),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            height: 160,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(14),
-                              image: const DecorationImage(
-                                image: AssetImage('assets/images/busqueda.png'),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 24, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.6),
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                child: const Text(
-                                  'LOCATE BY PROXIMITY',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                      // Businesses Carousel
+                      _buildBusinessesCarousel(),
+                      
+                      // Divider
+                      _buildDivider(),
+                      
+                      // Proximity Search Button
+                      _buildProximitySearchButton(),
                     ],
                   ),
                 ),
               ),
             ),
+            
+            // Bottom Navigation
+            _buildBottomNavigation(),
+          ],
+        ),
+      ),
+    );
+  }
 
-            // Footer
-            Container(
-              padding: const EdgeInsets.only(top: 20, bottom: 30),
-              height: 90,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey[300]!)),
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 40, 16, 20),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Welcome',
+              style: GoogleFonts.poppins(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF143E40),
               ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.home, color: Color(0xFF143E40), size: 32),
-                        onPressed: () {},
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.search, color: Color(0xFF143E40), size: 32),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const MapScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 60),
-                      Stack(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.calendar_today, color: Color(0xFF143E40), size: 32),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const ReservationsHistoryScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                          if (_activeReservationsCount > 0)
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 16,
-                                  minHeight: 16,
-                                ),
-                                child: Text(
-                                  '$_activeReservationsCount',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.person, color: Color(0xFF143E40), size: 32),
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/account');
-                        },
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    top: -32,
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF143E40),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 6.0,
-                            offset: const Offset(0, 3.0),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.search,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ),
-                  ),
-                ],
+            ),
+            Text(
+              'to groomly!',
+              style: GoogleFonts.poppins(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF143E40),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: TextField(
+          decoration: InputDecoration(
+            hintText: 'Search new places...',
+            border: InputBorder.none,
+            prefixIcon: const Icon(Icons.search, color: Colors.grey),
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBusinessesCarousel() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 16),
+      child: SizedBox(
+        height: 250,
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _businessesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Center(child: Text('No se encontraron negocios'));
+            }
+
+            final businesses = snapshot.data!;
+            return Column(
+              children: [
+                SizedBox(
+                  height: 220,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: businesses.length,
+                    itemBuilder: (context, index) {
+                      return _buildBusinessCard(context, businesses[index]);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    businesses.length,
+                    (index) => Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _currentPage == index
+                            ? const Color(0xFF143E40)
+                            : Colors.grey.withOpacity(0.4),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: Divider(
+              color: Colors.grey[400],
+              thickness: 2,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'OR',
+              style: GoogleFonts.poppins(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Divider(
+              color: Colors.grey[400],
+              thickness: 2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProximitySearchButton() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
+      child: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const MapScreen(), // Cambiado de ModernMapScreen a MapScreen
+            ),
+          );
+        },
+        child: Container(
+          height: 160,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            image: const DecorationImage(
+              image: AssetImage('assets/images/busqueda.png'),
+              fit: BoxFit.cover,
+            ),
+          ),
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Text(
+                'LOCATE BY PROXIMITY',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigation() {
+    return Container(
+      padding: const EdgeInsets.only(top: 20, bottom: 30),
+      height: 90,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey[300]!)),
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.home, color: Color(0xFF143E40), size: 32),
+                onPressed: () {},
+              ),
+              IconButton(
+                icon: const Icon(Icons.search, color: Color(0xFF143E40), size: 32),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MapScreen(), // Cambiado de ModernMapScreen a MapScreen
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 60),
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.calendar_today, color: Color(0xFF143E40), size: 32),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ReservationsHistoryScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  if (_activeReservationsCount > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          '$_activeReservationsCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.person, color: Color(0xFF143E40), size: 32),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/account');
+                },
+              ),
+            ],
+          ),
+          Positioned(
+            top: -32,
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: const Color(0xFF143E40),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 6.0,
+                    offset: const Offset(0, 3.0),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.search,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -410,6 +444,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: double.infinity,
                 height: 220,
                 fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: Colors.grey[200],
+                  child: const Icon(Icons.business, size: 50, color: Colors.grey),
+                ),
               ),
               Positioned(
                 bottom: 0,
@@ -431,7 +469,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        business['name'] ?? 'No name',
+                        business['name'] ?? 'Sin nombre',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -442,7 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        business['address'] ?? 'No address',
+                        business['address'] ?? 'Sin dirección',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 14,

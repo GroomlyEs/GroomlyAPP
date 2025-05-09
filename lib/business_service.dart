@@ -1,7 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class LatLng {
   final double latitude;
@@ -12,14 +11,6 @@ class LatLng {
 
 class BusinessService {
   final SupabaseClient _supabase = Supabase.instance.client;
-
-  TimeOfDay _parseTimeString(String timeString) {
-    final parts = timeString.split(':');
-    final hour = int.parse(parts[0]);
-    final minute = int.parse(parts[1]);
-    return TimeOfDay(hour: hour, minute: minute);
-  }
-  
 
   Future<List<Map<String, dynamic>>> getBusinesses() async {
     try {
@@ -33,84 +24,6 @@ class BusinessService {
       debugPrint('Error al obtener negocios: ${e.toString()}');
       throw Exception('Error al obtener negocios: ${e.toString()}');
     }
-  }
-
-  Future<List<Map<String, dynamic>>> getBusinessesWithLocations() async {
-    try {
-      final response = await _supabase
-          .from('barbershops')
-          .select('id, name, address, city, cover_url, logo_url, rating, location')
-          .not('location', 'is', null)
-          .order('name', ascending: true);
-
-      final businesses = List<Map<String, dynamic>>.from(response);
-
-      return businesses.map((business) {
-        if (business['location'] != null) {
-          try {
-            final locationStr = business['location'].toString();
-            final regex = RegExp(r'POINT\(([-\d.]+) ([-\d.]+)\)');
-            final match = regex.firstMatch(locationStr);
-            
-            if (match != null && match.groupCount >= 2) {
-              business['longitude'] = double.parse(match.group(1)!);
-              business['latitude'] = double.parse(match.group(2)!);
-            }
-          } catch (e) {
-            debugPrint('Error al parsear ubicación: $e');
-          }
-        }
-        return business;
-      }).toList();
-    } catch (e) {
-      debugPrint('Error al obtener negocios con ubicación: ${e.toString()}');
-      throw Exception('Error al obtener negocios con ubicación: ${e.toString()}');
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getNearbyBusinesses(
-    double latitude,
-    double longitude,
-    int radiusKm,
-  ) async {
-    try {
-      final allBusinesses = await getBusinessesWithLocations();
-      
-      return allBusinesses.where((business) {
-        if (business['latitude'] == null || business['longitude'] == null) {
-          return false;
-        }
-        
-        final distance = _calculateDistance(
-          latitude, 
-          longitude, 
-          business['latitude'], 
-          business['longitude']
-        );
-        
-        business['distance'] = distance;
-        return distance <= radiusKm;
-      }).toList();
-    } catch (e) {
-      debugPrint('Error al buscar negocios cercanos: ${e.toString()}');
-      throw Exception('Error al buscar negocios cercanos: ${e.toString()}');
-    }
-  }
-
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-    const earthRadius = 6371; // Radio de la Tierra en km
-    final dLat = _degreesToRadians(lat2 - lat1);
-    final dLon = _degreesToRadians(lon2 - lon1);
-    final a = 
-        sin(dLat / 2) * sin(dLat / 2) +
-        cos(_degreesToRadians(lat1)) * cos(_degreesToRadians(lat2)) *
-        sin(dLon / 2) * sin(dLon / 2);
-    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    return earthRadius * c;
-  }
-
-  double _degreesToRadians(double degrees) {
-    return degrees * pi / 180;
   }
 
   Future<Map<String, dynamic>> getBusinessDetails(String businessId) async {
@@ -236,6 +149,7 @@ class BusinessService {
     try {
       debugPrint('Obteniendo horarios para barbero $barberId en fecha ${date.toString()}');
 
+      // 1. Obtener horario del barbero
       final scheduleResponse = await _supabase
           .from('barber_schedule')
           .select('opens_at, closes_at, break_start, break_end')
@@ -253,6 +167,7 @@ class BusinessService {
         throw Exception('Horario incompleto en la base de datos');
       }
 
+      // Validar y parsear los tiempos
       final opensAtTime = _parseTimeString(schedule['opens_at'].toString());
       final closesAtTime = _parseTimeString(schedule['closes_at'].toString());
       final breakStartTime = schedule['break_start'] != null 
@@ -262,6 +177,7 @@ class BusinessService {
 
       debugPrint('Horario: $opensAtTime - $closesAtTime, Break: $breakStartTime - $breakEndTime');
 
+      // 2. Obtener citas existentes
       final startOfDay = DateTime(date.year, date.month, date.day);
       final endOfDay = startOfDay.add(const Duration(days: 1));
 
@@ -283,6 +199,7 @@ class BusinessService {
 
       debugPrint('Citas existentes: ${bookedSlots.length}');
 
+      // 3. Calcular horarios disponibles
       final availableSlots = <Map<String, dynamic>>[];
       DateTime currentSlot = DateTime(
         date.year, date.month, date.day,
@@ -298,6 +215,7 @@ class BusinessService {
       while (currentSlot.add(Duration(minutes: serviceDuration)).isBefore(closingDateTime)) {
         final slotEnd = currentSlot.add(Duration(minutes: serviceDuration));
 
+        // Verificar si está durante el break
         bool isDuringBreak = false;
         if (breakStartTime != null && breakEndTime != null) {
           final breakStart = DateTime(
@@ -311,6 +229,7 @@ class BusinessService {
           isDuringBreak = currentSlot.isBefore(breakEnd) && slotEnd.isAfter(breakStart);
         }
 
+        // Verificar disponibilidad
         bool isAvailable = !isDuringBreak;
         for (final booked in bookedSlots) {
           if (currentSlot.isBefore(booked['end']!) && slotEnd.isAfter(booked['start']!)) {
@@ -369,15 +288,132 @@ class BusinessService {
             .eq('appointment_id', appointment['id']);
 
         result.add({
-          'appointment': appointment,
-          'services': services,
+          ...appointment,
+          'appointment_services': services,
         });
       }
 
       return result;
     } catch (e) {
       debugPrint('Error al obtener citas activas: ${e.toString()}');
-      throw Exception('Error al obtener citas activas: ${e.toString()}');
+      throw Exception('Error al obtener citas activas del usuario: ${e.toString()}');
+    }
+  }
+
+  TimeOfDay _parseTimeString(String timeString) {
+    try {
+      final parts = timeString.split(':');
+      if (parts.length < 2) {
+        throw FormatException('Formato de tiempo inválido: $timeString');
+      }
+      return TimeOfDay(
+        hour: int.parse(parts[0]),
+        minute: int.parse(parts[1]),
+      );
+    } catch (e) {
+      debugPrint('Error al parsear tiempo: $timeString. ${e.toString()}');
+      throw Exception('Error al parsear tiempo: $timeString. ${e.toString()}');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getBusinessesWithLocations() async {
+    try {
+      final response = await _supabase
+          .from('barbershops')
+          .select('id, name, address, city, cover_url, logo_url, rating, location')
+          .not('location', 'is', null)
+          .order('name', ascending: true);
+
+      final businesses = List<Map<String, dynamic>>.from(response);
+
+      return businesses.map((business) {
+        if (business['location'] != null) {
+          try {
+            final locationStr = business['location'].toString();
+            final regex = RegExp(r'POINT\(([-\d.]+) ([-\d.]+)\)');
+            final match = regex.firstMatch(locationStr);
+            
+            if (match != null && match.groupCount >= 2) {
+              business['longitude'] = double.parse(match.group(1)!);
+              business['latitude'] = double.parse(match.group(2)!);
+            }
+          } catch (e) {
+            debugPrint('Error al parsear ubicación: $e');
+          }
+        }
+        return business;
+      }).toList();
+    } catch (e) {
+      debugPrint('Error al obtener negocios con ubicación: ${e.toString()}');
+      throw Exception('Error al obtener negocios con ubicación: ${e.toString()}');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getNearbyBusinesses(
+    double latitude,
+    double longitude,
+    int radiusKm,
+  ) async {
+    try {
+      final allBusinesses = await getBusinessesWithLocations();
+      
+      return allBusinesses.where((business) {
+        if (business['latitude'] == null || business['longitude'] == null) {
+          return false;
+        }
+        
+        final distance = _calculateDistance(
+          latitude, 
+          longitude, 
+          business['latitude'], 
+          business['longitude']
+        );
+        
+        business['distance'] = distance;
+        return distance <= radiusKm;
+      }).toList();
+    } catch (e) {
+      debugPrint('Error al buscar negocios cercanos: ${e.toString()}');
+      throw Exception('Error al buscar negocios cercanos: ${e.toString()}');
+    }
+  }
+
+  Future<double> getDistanceToBusiness(
+    double userLat,
+    double userLon,
+    String businessId,
+  ) async {
+    try {
+      final response = await _supabase
+          .from('barbershops')
+          .select('location')
+          .eq('id', businessId)
+          .single();
+
+      if (response['location'] == null) {
+        throw Exception('El negocio no tiene ubicación registrada');
+      }
+
+      try {
+        final locationStr = response['location'].toString();
+        final regex = RegExp(r'POINT\(([-\d.]+) ([-\d.]+)\)');
+        final match = regex.firstMatch(locationStr);
+        
+        if (match == null || match.groupCount < 2) {
+          throw Exception('Formato de ubicación no válido');
+        }
+
+        final businessLon = double.parse(match.group(1)!);
+        final businessLat = double.parse(match.group(2)!);
+
+        return _calculateDistance(userLat, userLon, businessLat, businessLon);
+      } catch (e) {
+        debugPrint('Error al parsear ubicación: ${e.toString()}');
+        throw Exception('Error al parsear ubicación: ${e.toString()}');
+      }
+    } catch (e) {
+      debugPrint('Error al calcular distancia: ${e.toString()}');
+      throw Exception('Error al calcular distancia: ${e.toString()}');
     }
   }
 
@@ -475,53 +511,20 @@ Future<List<Map<String, dynamic>>> getClockHistory(String barberId, {required Da
     throw Exception('Error al obtener historial de entradas y salidas: ${e.toString()}');
   }
 }
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadius = 6371; // Radio de la Tierra en km
+    final dLat = _degreesToRadians(lat2 - lat1);
+    final dLon = _degreesToRadians(lon2 - lon1);
+    final a = 
+        sin(dLat / 2) * sin(dLat / 2) +
+        cos(_degreesToRadians(lat1)) * cos(_degreesToRadians(lat2)) *
+        sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
 
-Future<List<Map<String, dynamic>>> getNearbyBusinessesWithPostGIS(
-  SupabaseClient supabase,
-  double latitude,
-  double longitude,
-  int radiusKm,
-) async {
-  try {
-    final query = '''
-      id,
-      name,
-      address,
-      city,
-      cover_url,
-      logo_url,
-      rating,
-      location,
-      ST_Distance(location::geography, ST_MakePoint($longitude, $latitude)::geography) as distance
-    ''';
-
-    final response = await supabase
-        .from('barbershops')
-        .select(query)
-        .filter('location', 'is not', null)
-        .filter(
-          'ST_DWithin(location::geography, ST_MakePoint($longitude, $latitude)::geography, ${radiusKm * 1000})',
-          'eq',
-          true,
-        );
-
-    final businesses = List<Map<String, dynamic>>.from(response);
-
-    // Parsear location y distancia
-    for (final business in businesses) {
-      final locationStr = business['location']?.toString();
-      final match = RegExp(r'POINT\(([-\d.]+) ([-\d.]+)\)').firstMatch(locationStr ?? '');
-      if (match != null) {
-        business['longitude'] = double.parse(match.group(1)!);
-        business['latitude'] = double.parse(match.group(2)!);
-      }
-      business['distance'] = double.tryParse(business['distance'].toString()) ?? 0.0;
-    }
-
-    return businesses;
-  } catch (e) {
-    debugPrint('Error al buscar negocios cercanos con PostGIS: ${e.toString()}');
-    throw Exception('Error al buscar negocios cercanos: ${e.toString()}');
+  double _degreesToRadians(double degrees) {
+    return degrees * pi / 180;
   }
 }
-}
+
