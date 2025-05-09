@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:slide_to_act/slide_to_act.dart';
 import 'business_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as GoogleMaps;
 
@@ -22,6 +23,7 @@ class _ClockInOutScreenState extends State<ClockInOutScreen> {
   Map<String, dynamic>? _currentClock;
   List<Map<String, dynamic>> _clockHistory = [];
   GoogleMaps.LatLng? _currentLocation;
+  final GlobalKey<SlideActionState> _slideKey = GlobalKey();
 
   @override
   void initState() {
@@ -113,6 +115,7 @@ class _ClockInOutScreenState extends State<ClockInOutScreen> {
       setState(() {
         _currentClock = currentClock;
         _clockHistory = history;
+        _slideKey.currentState?.reset(); // Resetear el botón deslizante
       });
     } catch (e) {
       debugPrint('Error loading clock data: $e');
@@ -124,64 +127,46 @@ class _ClockInOutScreenState extends State<ClockInOutScreen> {
     }
   }
 
-  Future<void> _handleClockIn() async {
+  Future<void> _handleClockAction() async {
     if (_barberId == null) return;
 
     setState(() => _isLoading = true);
     try {
       final businessService = Provider.of<BusinessService>(context, listen: false);
-      await businessService.clockIn(
-        _barberId!,
-        _currentLocation != null
-            ? LatLng(_currentLocation!.latitude, _currentLocation!.longitude)
-            : null,
-      );
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Entrada registrada correctamente'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
-      await _loadClockData();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al registrar entrada: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _handleClockOut() async {
-    if (_barberId == null) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final businessService = Provider.of<BusinessService>(context, listen: false);
-      await businessService.clockOut(
-        _barberId!,
-        _currentLocation != null
-            ? LatLng(_currentLocation!.latitude, _currentLocation!.longitude)
-            : null,
-      );
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Salida registrada correctamente'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (_currentClock != null) {
+        await businessService.clockOut(
+          _barberId!,
+          _currentLocation != null
+              ? LatLng(_currentLocation!.latitude, _currentLocation!.longitude)
+              : null,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Salida registrada correctamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        await businessService.clockIn(
+          _barberId!,
+          _currentLocation != null
+              ? LatLng(_currentLocation!.latitude, _currentLocation!.longitude)
+              : null,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Entrada registrada correctamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
       
       await _loadClockData();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error al registrar salida: ${e.toString()}'),
+          content: Text('Error: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -192,7 +177,6 @@ class _ClockInOutScreenState extends State<ClockInOutScreen> {
 
   String _formatDuration(String? duration) {
     if (duration == null) return '--:--';
-    
     try {
       final parts = duration.split(':');
       return '${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
@@ -224,7 +208,9 @@ class _ClockInOutScreenState extends State<ClockInOutScreen> {
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Sección de estado actual
                   Card(
                     elevation: 4,
                     shape: RoundedRectangleBorder(
@@ -234,31 +220,44 @@ class _ClockInOutScreenState extends State<ClockInOutScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.person,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Deirdra', // Nombre del barbero
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
                           Text(
-                            'Estado Actual',
+                            _currentClock != null 
+                                ? 'Turno activo'
+                                : 'Nuevo turno',
                             style: GoogleFonts.poppins(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: const Color(0xFF143E40),
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          Icon(
-                            _currentClock != null ? Icons.timer : Icons.timer_off,
-                            size: 48,
-                            color: _currentClock != null ? Colors.green : Colors.grey,
-                          ),
                           const SizedBox(height: 8),
                           Text(
                             _currentClock != null 
-                                ? 'Trabajando desde ${DateFormat('HH:mm').format(DateTime.parse(_currentClock!['clock_in']).toLocal())}'
-                                : 'No has fichado entrada',
+                                ? 'Entrada: ${DateFormat('HH:mm').format(DateTime.parse(_currentClock!['clock_in']).toLocal())}'
+                                : 'Desliza para comenzar turno',
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              color: Colors.grey[700],
+                              fontSize: 14,
+                              color: Colors.grey[600],
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 24),
                           if (!_hasLocationPermission)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),
@@ -270,49 +269,55 @@ class _ClockInOutScreenState extends State<ClockInOutScreen> {
                                 ),
                               ),
                             ),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _currentClock != null ? _handleClockOut : _handleClockIn,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _currentClock != null 
-                                    ? Colors.red[400]
-                                    : const Color(0xFF143E40),
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: Text(
-                                _currentClock != null ? 'FICHAR SALIDA' : 'FICHAR ENTRADA',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
+                          // Botón de deslizamiento
+                          SlideAction(
+                            key: _slideKey,
+                            onSubmit: _handleClockAction,
+                            sliderButtonIcon: Icon(
+                              _currentClock != null ? Icons.logout : Icons.login,
+                              color: Colors.white,
                             ),
+                            text: _currentClock != null 
+                                ? 'Desliza para salir'
+                                : 'Desliza para entrar',
+                            textStyle: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            alignment: Alignment.center,
+                            height: 60,
+                            borderRadius: 12,
+                            elevation: 0,
+                            innerColor: const Color(0xFF143E40),
+                            outerColor: Colors.grey[200],
                           ),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    'Historial de Asistencia',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF143E40),
+                  // Sección de historial
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'Historial de Turnos',
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF143E40),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   if (_clockHistory.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Text(
-                        'No hay registros de asistencia',
-                        style: GoogleFonts.poppins(
-                          color: Colors.grey[600],
+                      child: Center(
+                        child: Text(
+                          'No hay registros de turnos',
+                          style: GoogleFonts.poppins(
+                            color: Colors.grey[600],
+                          ),
                         ),
                       ),
                     )
@@ -330,34 +335,49 @@ class _ClockInOutScreenState extends State<ClockInOutScreen> {
                             : null;
                         final duration = record['duration'];
 
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF143E40).withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              clockOut != null ? Icons.check_circle : Icons.timer,
-                              color: clockOut != null ? Colors.green : Colors.orange,
-                            ),
+                        return Card(
+                          elevation: 2,
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          title: Text(
-                            DateFormat('EEEE, d MMMM', 'es_ES').format(clockIn),
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w500,
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF143E40).withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                clockOut != null ? Icons.check_circle : Icons.timer,
+                                color: clockOut != null ? Colors.green : Colors.orange,
+                              ),
                             ),
-                          ),
-                          subtitle: Text(
-                            '${DateFormat('HH:mm').format(clockIn)} - ${clockOut != null ? DateFormat('HH:mm').format(clockOut) : '--:--'}',
-                            style: GoogleFonts.poppins(),
-                          ),
-                          trailing: Text(
-                            duration != null ? _formatDuration(duration) : '--:--',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.bold,
+                            title: Text(
+                              DateFormat('EEEE, d MMMM', 'es_ES').format(clockIn),
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${DateFormat('HH:mm').format(clockIn)} - ${clockOut != null ? DateFormat('HH:mm').format(clockOut) : '--:--'}',
+                                  style: GoogleFonts.poppins(),
+                                ),
+                                if (duration != null)
+                                  Text(
+                                    'Duración: ${_formatDuration(duration)}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         );
