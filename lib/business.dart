@@ -16,21 +16,26 @@ class BusinessScreen extends StatefulWidget {
 }
 
 class _BusinessScreenState extends State<BusinessScreen> {
+  // Dependencias
   final SupabaseClient _supabase = Supabase.instance.client;
+  final PageController _imageController = PageController();
+  final TextEditingController _notesController = TextEditingController();
+
+  // Estado del negocio
   late String _businessId;
   late Future<Map<String, dynamic>> _businessFuture;
   late Future<List<Map<String, dynamic>>> _barbersFuture;
   late Future<List<Map<String, dynamic>>> _servicesFuture;
   
+  // Estado de la reserva
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   String? _selectedBarberId;
   final Map<String, Map<String, dynamic>> _selectedServices = {};
   int _totalDuration = 0;
   double _totalPrice = 0.0;
-  final TextEditingController _notesController = TextEditingController();
   
-  final PageController _imageController = PageController();
+  // Estado UI
   int _currentImageIndex = 0;
   bool _isSubmitting = false;
   int _activeReservationsCount = 0;
@@ -39,17 +44,6 @@ class _BusinessScreenState extends State<BusinessScreen> {
   void initState() {
     super.initState();
     _loadActiveReservationsCount();
-  }
-
-  Future<void> _loadActiveReservationsCount() async {
-    final session = _supabase.auth.currentSession;
-    if (session != null) {
-      final businessService = Provider.of<BusinessService>(context, listen: false);
-      final appointments = await businessService.getUserActiveAppointments(session.user.id);
-      setState(() {
-        _activeReservationsCount = appointments.length;
-      });
-    }
   }
 
   @override
@@ -64,9 +58,26 @@ class _BusinessScreenState extends State<BusinessScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _imageController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadActiveReservationsCount() async {
+    final session = _supabase.auth.currentSession;
+    if (session != null) {
+      final businessService = Provider.of<BusinessService>(context, listen: false);
+      final appointments = await businessService.getUserActiveAppointments(session.user.id);
+      setState(() {
+        _activeReservationsCount = appointments.length;
+      });
+    }
+  }
+
   void _loadData() {
     final businessService = Provider.of<BusinessService>(context, listen: false);
-    
     setState(() {
       _businessFuture = businessService.getBusinessDetails(_businessId);
       _barbersFuture = businessService.getBarbers(_businessId);
@@ -74,11 +85,10 @@ class _BusinessScreenState extends State<BusinessScreen> {
     });
   }
 
+  // ========== MÉTODOS DE SELECCIÓN ==========
   Future<void> _selectDate(BuildContext context) async {
     if (_selectedBarberId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor seleccione un barbero primero')),
-      );
+      _showSnackBar('Selecciona un barbero primero');
       return;
     }
 
@@ -88,20 +98,7 @@ class _BusinessScreenState extends State<BusinessScreen> {
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 60)),
       locale: const Locale('es', 'ES'),
-      builder: (BuildContext context, Widget? child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF143E40),
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Colors.black,
-            ),
-            dialogBackgroundColor: Colors.white,
-          ),
-          child: child!,
-        );
-      },
+      builder: (context, child) => _buildPickerTheme(child!),
     );
 
     if (picked != null) {
@@ -113,32 +110,13 @@ class _BusinessScreenState extends State<BusinessScreen> {
   }
 
   Future<void> _selectTime(BuildContext context) async {
-    // Verificar condiciones previas con mensajes más descriptivos
-    if (_selectedBarberId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Primero selecciona un barbero para ver los horarios disponibles')),
-      );
-      return;
-    }
-
-    if (_selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Selecciona una fecha para ver los horarios disponibles')),
-      );
-      return;
-    }
-
-    if (_selectedServices.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Agrega al menos un servicio para calcular la duración')),
-      );
-      return;
-    }
+    if (_selectedBarberId == null) return _showSnackBar('Selecciona un barbero');
+    if (_selectedDate == null) return _showSnackBar('Selecciona una fecha');
+    if (_selectedServices.isEmpty) return _showSnackBar('Agrega al menos un servicio');
 
     try {
       final businessService = Provider.of<BusinessService>(context, listen: false);
       
-      // Mostrar indicador de carga mientras se obtienen los horarios
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -151,78 +129,37 @@ class _BusinessScreenState extends State<BusinessScreen> {
         _totalDuration,
       );
 
-      // Cerrar el diálogo de carga
       Navigator.of(context).pop();
 
       if (availableSlots.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No hay horarios disponibles para este día con la duración seleccionada')),
-        );
-        return;
+        return _showSnackBar('No hay horarios disponibles');
       }
 
-      // Convertir slots disponibles a TimeOfDay para el selector
-      final availableTimes = availableSlots.map((slot) {
-        return TimeOfDay(hour: slot['hour'], minute: slot['minute']);
-      }).toList();
+      final availableTimes = availableSlots.map((slot) => TimeOfDay(
+        hour: slot['hour'], 
+        minute: slot['minute'],
+      )).toList();
 
       final TimeOfDay? pickedTime = await showTimePicker(
         context: context,
         initialTime: _selectedTime ?? _findClosestAvailableTime(availableTimes),
-        builder: (BuildContext context, Widget? child) {
-          return Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: const ColorScheme.light(
-                primary: Color(0xFF143E40),
-                onPrimary: Colors.white,
-                surface: Colors.white,
-                onSurface: Colors.black,
-              ),
-              dialogBackgroundColor: Colors.white,
-            ),
-            child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                alwaysUse24HourFormat: true,
-              ),
-              child: child!,
-            ),
-          );
-        },
+        builder: (context, child) => _buildPickerTheme(child!),
       );
 
       if (pickedTime != null) {
-        // Verificar que la hora seleccionada está en los slots disponibles
         final isTimeValid = availableTimes.any((time) => 
           time.hour == pickedTime.hour && time.minute == pickedTime.minute);
         
         if (isTimeValid) {
-          setState(() {
-            _selectedTime = pickedTime;
-          });
+          setState(() => _selectedTime = pickedTime);
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Por favor seleccione una hora disponible')),
-          );
+          _showSnackBar('Selecciona una hora disponible');
         }
       }
     } catch (e) {
-      // Cerrar el diálogo de carga si hay un error
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al obtener horarios: ${e.toString()}')),
-      );
+      _showSnackBar('Error al obtener horarios: ${e.toString()}');
     }
-  }
-
-  // Método auxiliar para encontrar la hora disponible más cercana
-  TimeOfDay _findClosestAvailableTime(List<TimeOfDay> availableTimes) {
-    final now = TimeOfDay.now();
-    for (final time in availableTimes) {
-      if (time.hour > now.hour || (time.hour == now.hour && time.minute >= now.minute)) {
-        return time;
-      }
-    }
-    return availableTimes.first;
   }
 
   void _toggleServiceSelection(Map<String, dynamic> service) {
@@ -236,37 +173,21 @@ class _BusinessScreenState extends State<BusinessScreen> {
         _totalDuration += (service['duration'] as num).toInt();
         _totalPrice += (service['price'] as num).toDouble();
       }
-      
       _selectedTime = null;
     });
   }
 
+  // ========== MÉTODOS DE CONFIRMACIÓN ==========
   Future<void> _confirmOrder() async {
-    if (_selectedDate == null || 
-        _selectedTime == null || 
-        _selectedBarberId == null || 
-        _selectedServices.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor complete todos los campos')),
-      );
-      return;
+    if (_selectedDate == null || _selectedTime == null || 
+        _selectedBarberId == null || _selectedServices.isEmpty) {
+      return _showSnackBar('Completa todos los campos');
     }
 
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final businessService = Provider.of<BusinessService>(context, listen: false);
-    
     final session = _supabase.auth.currentSession;
-    if (session == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Debe iniciar sesión para realizar una reserva')),
-      );
-      return;
-    }
-    final userId = session.user.id;
+    if (session == null) return _showSnackBar('Debes iniciar sesión');
 
-    setState(() {
-      _isSubmitting = true;
-    });
+    setState(() => _isSubmitting = true);
 
     try {
       final appointmentTime = DateTime(
@@ -277,116 +198,21 @@ class _BusinessScreenState extends State<BusinessScreen> {
         _selectedTime!.minute,
       );
 
+      final businessService = Provider.of<BusinessService>(context, listen: false);
+      final userId = session.user.id;
+      
       final activeAppointments = await businessService.getUserActiveAppointments(userId);
       if (activeAppointments.isNotEmpty) {
-        final bool? confirm = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(
-              'Ya tienes una reserva',
-              style: GoogleFonts.poppins(
-                color: const Color(0xFF143E40),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: Text(
-              'Ya tienes una reserva activa. ¿Deseas crear una nueva?',
-              style: GoogleFonts.poppins(),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(
-                  'Cancelar',
-                  style: GoogleFonts.poppins(
-                    color: const Color(0xFF143E40),
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text(
-                  'Continuar',
-                  style: GoogleFonts.poppins(
-                    color: const Color(0xFF143E40),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        final confirm = await _showConfirmationDialog(
+          title: 'Reserva existente',
+          content: 'Ya tienes una reserva activa. ¿Deseas crear una nueva?',
         );
-
-        if (confirm != true) {
-          return;
-        }
+        if (confirm != true) return;
       }
 
-      final bool? confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(
-            'Confirmar Reserva',
-            style: GoogleFonts.poppins(
-              color: const Color(0xFF143E40),
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Detalles de la reserva:',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Fecha: ${DateFormat('EEE, d MMM yyyy', 'es_ES').format(_selectedDate!)}',
-                style: GoogleFonts.poppins(),
-              ),
-              Text(
-                'Hora: ${_selectedTime!.format(context)}',
-                style: GoogleFonts.poppins(),
-              ),
-              Text(
-                'Duración: $_totalDuration minutos',
-                style: GoogleFonts.poppins(),
-              ),
-              Text(
-                'Total: ${_totalPrice.toStringAsFixed(2)}€',
-                style: GoogleFonts.poppins(),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                'Cancelar',
-                style: GoogleFonts.poppins(
-                  color: const Color(0xFF143E40),
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(
-                'Confirmar',
-                style: GoogleFonts.poppins(
-                  color: const Color(0xFF143E40),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-
+      final confirm = await _showReservationDetailsDialog(appointmentTime);
       if (confirm == true) {
-        final appointmentId = await businessService.createOrder(
+        await businessService.createOrder(
           businessId: _businessId,
           userId: userId,
           barberId: _selectedBarberId!,
@@ -395,94 +221,208 @@ class _BusinessScreenState extends State<BusinessScreen> {
           notes: _notesController.text,
         );
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Reserva confirmada con éxito!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
+        _showSuccessSnackBar('¡Reserva confirmada!');
         await _loadActiveReservationsCount();
-
-        setState(() {
-          _selectedDate = null;
-          _selectedTime = null;
-          _selectedBarberId = null;
-          _selectedServices.clear();
-          _totalDuration = 0;
-          _totalPrice = 0.0;
-          _notesController.clear();
-        });
+        _resetForm();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al crear la reserva: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showErrorSnackBar('Error: ${e.toString()}');
     } finally {
-      setState(() {
-        _isSubmitting = false;
-      });
+      setState(() => _isSubmitting = false);
     }
   }
 
-  Widget _buildServiceItem({
-    required Map<String, dynamic> service,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Row(
+  // ========== MÉTODOS AUXILIARES ==========
+  TimeOfDay _findClosestAvailableTime(List<TimeOfDay> availableTimes) {
+    final now = TimeOfDay.now();
+    for (final time in availableTimes) {
+      if (time.hour > now.hour || (time.hour == now.hour && time.minute >= now.minute)) {
+        return time;
+      }
+    }
+    return availableTimes.first;
+  }
+
+  void _resetForm() {
+    setState(() {
+      _selectedDate = null;
+      _selectedTime = null;
+      _selectedBarberId = null;
+      _selectedServices.clear();
+      _totalDuration = 0;
+      _totalPrice = 0.0;
+      _notesController.clear();
+    });
+  }
+
+  Theme _buildPickerTheme(Widget child) {
+    return Theme(
+      data: Theme.of(context).copyWith(
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFF143E40),
+          onPrimary: Colors.white,
+          surface: Colors.white,
+          onSurface: Colors.black,
+        ),
+        dialogBackgroundColor: Colors.white,
+      ),
+      child: MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child,
+      ),
+    );
+  }
+
+  // ========== COMPONENTES UI ==========
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: _buildAppBar(),
+      body: Stack(
         children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: isSelected 
-                    ? const Color(0xFF143E40)
-                    : Colors.grey[400]!,
-              ),
-              borderRadius: BorderRadius.circular(6),
-              color: isSelected 
-                  ? const Color(0xFF143E40).withOpacity(0.2)
-                  : Colors.transparent,
-            ),
-            child: isSelected
-                ? const Icon(Icons.check, size: 16, color: Color(0xFF143E40))
-                : null,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  service['name'] ?? 'Sin nombre',
-                  style: GoogleFonts.poppins(
-                    color: const Color(0xFF143E40),
-                    fontWeight: FontWeight.w500,
-                  ),
+          FutureBuilder<Map<String, dynamic>>(
+            future: _businessFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
+
+              final business = snapshot.data!;
+              final images = [
+                business['cover_url'],
+                business['logo_url'],
+              ].whereType<String>().toList();
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 100), // Espacio para el botón fijo
+                child: Column(
+                  children: [
+                    if (images.isNotEmpty) _buildImageGallery(images),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildBusinessHeader(business),
+                          const SizedBox(height: 24),
+                          _buildReservationForm(),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  '${service['duration']} min',
-                  style: GoogleFonts.poppins(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
-          Text(
-            '${(service['price'] as num).toStringAsFixed(2)}€',
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _buildBottomActionBar(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  AppBar _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Color(0xFF143E40)),
+        onPressed: () => Navigator.pop(context),
+      ),
+      title: FutureBuilder<Map<String, dynamic>>(
+        future: _businessFuture,
+        builder: (context, snapshot) {
+          return Text(
+            snapshot.data?['name'] ?? 'Negocio',
             style: GoogleFonts.poppins(
               color: const Color(0xFF143E40),
+              fontSize: 18,
               fontWeight: FontWeight.bold,
-              fontSize: 16,
+            ),
+          );
+        },
+      ),
+      centerTitle: true,
+      actions: [
+        Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.calendar_today, color: Color(0xFF143E40)),
+              onPressed: () => Navigator.pushNamed(context, '/reservations'),
+            ),
+            if (_activeReservationsCount > 0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Text(
+                    '$_activeReservationsCount',
+                    style: const TextStyle(color: Colors.white, fontSize: 10),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImageGallery(List<String> images) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 220,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: PageView.builder(
+                controller: _imageController,
+                itemCount: images.length,
+                onPageChanged: (index) => setState(() => _currentImageIndex = index),
+                itemBuilder: (context, index) => Image.network(
+                  images[index],
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: Colors.grey[200],
+                    child: const Icon(Icons.broken_image, color: Colors.grey),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              images.length,
+              (index) => Container(
+                width: 8,
+                height: 8,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _currentImageIndex == index
+                      ? const Color(0xFF143E40)
+                      : Colors.grey.withOpacity(0.4),
+                ),
+              ),
             ),
           ),
         ],
@@ -490,33 +430,150 @@ class _BusinessScreenState extends State<BusinessScreen> {
     );
   }
 
+  Widget _buildBusinessHeader(Map<String, dynamic> business) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          business['name'] ?? 'Sin nombre',
+          style: GoogleFonts.poppins(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF143E40),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Icon(Icons.location_on, size: 16, color: Colors.grey),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                business['address'] ?? 'Sin dirección',
+                style: GoogleFonts.poppins(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF143E40).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'ABIERTO',
+                style: GoogleFonts.poppins(
+                  color: const Color(0xFF143E40),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Divider(color: Colors.grey[300]),
+      ],
+    );
+  }
+
+  Widget _buildReservationForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('Selecciona tu barbero'),
+        const SizedBox(height: 12),
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _barbersFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}');
+            }
+            return _buildBarberDropdown(snapshot.data ?? []);
+          },
+        ),
+        const SizedBox(height: 24),
+        _buildSectionTitle('Selecciona servicios'),
+        const SizedBox(height: 12),
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _servicesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}');
+            }
+            return _buildServicesList(snapshot.data ?? []);
+          },
+        ),
+        const SizedBox(height: 24),
+        _buildSectionTitle('Elige fecha y hora'),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildDateSelector(),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildTimeSelector(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _buildSectionTitle('Notas adicionales'),
+        const SizedBox(height: 12),
+        _buildNotesField(),
+      ],
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: GoogleFonts.poppins(
+        color: const Color(0xFF143E40),
+        fontWeight: FontWeight.w600,
+        fontSize: 16,
+      ),
+    );
+  }
+
   Widget _buildBarberDropdown(List<Map<String, dynamic>> barbers) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: DropdownButton<String>(
         value: _selectedBarberId,
-        hint: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Seleccionar barbero',
-            style: GoogleFonts.poppins(color: Colors.grey[600]),
-          ),
+        hint: Text(
+          'Seleccionar barbero',
+          style: GoogleFonts.poppins(color: Colors.grey[600]),
         ),
         isExpanded: true,
         underline: const SizedBox(),
         items: barbers.map((barber) {
           return DropdownMenuItem<String>(
             value: barber['id'],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                barber['name'] ?? 'Desconocido',
-                style: GoogleFonts.poppins(),
-              ),
+            child: Text(
+              barber['name'] ?? 'Desconocido',
+              style: GoogleFonts.poppins(),
             ),
           );
         }).toList(),
@@ -531,464 +588,394 @@ class _BusinessScreenState extends State<BusinessScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    _imageController.dispose();
-    _notesController.dispose();
-    super.dispose();
+  Widget _buildDateSelector() {
+    return InkWell(
+      onTap: () => _selectDate(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[300]!),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_today, size: 20, color: Color(0xFF143E40)),
+            const SizedBox(width: 12),
+            Text(
+              _selectedDate != null
+                  ? DateFormat('EEE, d MMM', 'es_ES').format(_selectedDate!)
+                  : 'Fecha',
+              style: GoogleFonts.poppins(
+                color: _selectedDate != null ? Colors.black : Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF143E40)),
-          onPressed: () => Navigator.pop(context),
+  Widget _buildTimeSelector() {
+    return InkWell(
+      onTap: () => _selectTime(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[300]!),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        title: FutureBuilder<Map<String, dynamic>>(
-          future: _businessFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox();
-            }
-            return Text(
-              snapshot.data?['name'] ?? 'Negocio',
+        child: Row(
+          children: [
+            const Icon(Icons.access_time, size: 20, color: Color(0xFF143E40)),
+            const SizedBox(width: 12),
+            Text(
+              _selectedTime != null
+                  ? _selectedTime!.format(context)
+                  : 'Hora',
               style: GoogleFonts.poppins(
-                color: const Color(0xFF143E40),
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                color: _selectedTime != null ? Colors.black : Colors.grey[600],
               ),
-            );
-          },
+            ),
+          ],
         ),
-        centerTitle: true,
-        actions: [
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.calendar_today, color: Color(0xFF143E40)),
-                onPressed: () {
-                  Navigator.pushNamed(context, '/reservations');
-                },
+      ),
+    );
+  }
+
+  Widget _buildServicesList(List<Map<String, dynamic>> services) {
+    if (services.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Text('No hay servicios disponibles'),
+      );
+    }
+
+    return Column(
+      children: services.map((service) {
+        final isSelected = _selectedServices.containsKey(service['id']);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: InkWell(
+            onTap: () => _toggleServiceSelection(service),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isSelected 
+                    ? const Color(0xFF143E40).withOpacity(0.05)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected 
+                      ? const Color(0xFF143E40)
+                      : Colors.grey[300]!,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              if (_activeReservationsCount > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
+              child: Row(
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
                     decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      '$_activeReservationsCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
+                      border: Border.all(
+                        color: isSelected 
+                            ? const Color(0xFF143E40)
+                            : Colors.grey[400]!,
                       ),
-                      textAlign: TextAlign.center,
+                      borderRadius: BorderRadius.circular(6),
+                      color: isSelected 
+                          ? const Color(0xFF143E40).withOpacity(0.2)
+                          : Colors.transparent,
+                    ),
+                    child: isSelected
+                        ? const Icon(Icons.check, size: 16, color: Color(0xFF143E40))
+                        : null,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          service['name'] ?? 'Sin nombre',
+                          style: GoogleFonts.poppins(
+                            color: const Color(0xFF143E40),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          '${service['duration']} min',
+                          style: GoogleFonts.poppins(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-            ],
+                  Text(
+                    '${(service['price'] as num).toStringAsFixed(2)}€',
+                    style: GoogleFonts.poppins(
+                      color: const Color(0xFF143E40),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildNotesField() {
+    return TextField(
+      controller: _notesController,
+      maxLines: 3,
+      decoration: InputDecoration(
+        hintText: 'Escribe aquí cualquier requerimiento especial...',
+        hintStyle: GoogleFonts.poppins(color: Colors.grey[500]),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  Widget _buildBottomActionBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: Colors.grey[200]!),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
           ),
         ],
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _businessFuture,
-        builder: (context, businessSnapshot) {
-          if (businessSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (businessSnapshot.hasError) {
-            return Center(child: Text('Error: ${businessSnapshot.error}'));
-          }
-
-          final business = businessSnapshot.data!;
-          final List<String> images = [
-            business['cover_url'],
-            business['logo_url'],
-          ].whereType<String>().toList();
-
-          return Column(
-            children: [
-              if (images.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        width: 327,
-                        height: 320,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: PageView.builder(
-                            controller: _imageController,
-                            itemCount: images.length,
-                            onPageChanged: (index) {
-                              setState(() {
-                                _currentImageIndex = index;
-                              });
-                            },
-                            itemBuilder: (context, index) {
-                              return Image.network(
-                                images[index],
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
-                                    color: Colors.grey[200],
-                                    child: const Icon(Icons.broken_image, color: Colors.grey),
-                                  );
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(
-                          images.length,
-                          (index) => Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _currentImageIndex == index
-                                  ? const Color(0xFF143E40)
-                                  : Colors.grey.withOpacity(0.4),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+      child: Row(
+        children: [
+          if (_selectedServices.isNotEmpty) ...[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Total',
+                  style: GoogleFonts.poppins(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                  ),
+                ),
+                Text(
+                  '${_totalPrice.toStringAsFixed(2)}€',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: const Color(0xFF143E40),
                   ),
                 ),
               ],
-
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        business['name'] ?? 'Sin nombre',
-                        style: GoogleFonts.poppins(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF143E40),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Text(
-                            business['address'] ?? 'Sin dirección',
-                            style: GoogleFonts.poppins(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                            ),
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF143E40).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'ABIERTO',
-                              style: GoogleFonts.poppins(
-                                color: const Color(0xFF143E40),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Fecha',
-                            style: GoogleFonts.poppins(
-                              color: const Color(0xFF143E40),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          GestureDetector(
-                            onTap: () => _selectDate(context),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey[300]!),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    _selectedDate != null
-                                        ? DateFormat('EEE, d MMM', 'es_ES').format(_selectedDate!)
-                                        : 'Seleccionar fecha',
-                                    style: GoogleFonts.poppins(
-                                      color: _selectedDate != null 
-                                          ? Colors.black 
-                                          : Colors.grey[600],
-                                    ),
-                                  ),
-                                  const Icon(Icons.calendar_today, size: 20, color: Colors.grey),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Hora',
-                            style: GoogleFonts.poppins(
-                              color: const Color(0xFF143E40),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          GestureDetector(
-                            onTap: () => _selectTime(context),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey[300]!),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    _selectedTime != null
-                                        ? _selectedTime!.format(context)
-                                        : 'Seleccionar hora',
-                                    style: GoogleFonts.poppins(
-                                      color: _selectedTime != null 
-                                          ? Colors.black 
-                                          : Colors.grey[600],
-                                    ),
-                                  ),
-                                  const Icon(Icons.access_time, size: 20, color: Colors.grey),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Barbero',
-                            style: GoogleFonts.poppins(
-                              color: const Color(0xFF143E40),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          FutureBuilder<List<Map<String, dynamic>>>(
-                            future: _barbersFuture,
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const CircularProgressIndicator();
-                              } else if (snapshot.hasError) {
-                                return Text('Error: ${snapshot.error}');
-                              }
-                              
-                              final barbers = snapshot.data ?? [];
-                              return _buildBarberDropdown(barbers);
-                            },
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      Text(
-                        'SERVICIOS',
-                        style: GoogleFonts.poppins(
-                          color: const Color(0xFF143E40),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      FutureBuilder<List<Map<String, dynamic>>>(
-                        future: _servicesFuture,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
-                          } else if (snapshot.hasError) {
-                            return Text('Error: ${snapshot.error}');
-                          }
-                          
-                          final services = snapshot.data ?? [];
-                          
-                          return Column(
-                            children: [
-                              ...services.map((service) {
-                                final isSelected = _selectedServices.containsKey(service['id']);
-                                return Column(
-                                  children: [
-                                    _buildServiceItem(
-                                      service: service,
-                                      isSelected: isSelected,
-                                      onTap: () => _toggleServiceSelection(service),
-                                    ),
-                                    const Divider(height: 24, color: Color(0xFFEEEEEE)),
-                                  ],
-                                );
-                              }),
-                              if (services.isEmpty)
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 16),
-                                  child: Text('No hay servicios disponibles'),
-                                ),
-                            ],
-                          );
-                        },
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Notas adicionales',
-                            style: GoogleFonts.poppins(
-                              color: const Color(0xFF143E40),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _notesController,
-                            maxLines: 3,
-                            decoration: InputDecoration(
-                              hintText: 'Escribe aquí cualquier requerimiento especial...',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey[300]!),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey[300]!),
-                              ),
-                              contentPadding: const EdgeInsets.all(12),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+            ),
+            const SizedBox(width: 20),
+          ],
+          Expanded(
+            child: ElevatedButton(
+              onPressed: _isSubmitting ? null : _confirmOrder,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF143E40),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                elevation: 0,
               ),
-              
-              Container(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border(
-                    top: BorderSide(color: Colors.grey[300]!),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    if (_selectedServices.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Total:',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              '${_totalPrice.toStringAsFixed(2)}€',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                                color: const Color(0xFF143E40),
-                              ),
-                            ),
-                          ],
-                        ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isSubmitting ? null : _confirmOrder,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF143E40),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: _isSubmitting
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                'CONFIRMAR RESERVA',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
+                    )
+                  : Text(
+                      'CONFIRMAR RESERVA',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
                     ),
-                  ],
-                ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ========== DIÁLOGOS Y SNACKBARS ==========
+  Future<bool?> _showConfirmationDialog({required String title, required String content}) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          title,
+          style: GoogleFonts.poppins(
+            color: const Color(0xFF143E40),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(content, style: GoogleFonts.poppins()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancelar',
+              style: GoogleFonts.poppins(color: const Color(0xFF143E40)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'Continuar',
+              style: GoogleFonts.poppins(
+                color: const Color(0xFF143E40),
+                fontWeight: FontWeight.bold,
               ),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showReservationDetailsDialog(DateTime appointmentTime) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Confirmar Reserva',
+          style: GoogleFonts.poppins(
+            color: const Color(0xFF143E40),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Detalles:', style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
+            const SizedBox(height: 12),
+            _buildDetailRow(Icons.calendar_today, 
+              DateFormat('EEE, d MMM yyyy', 'es_ES').format(_selectedDate!)),
+            const SizedBox(height: 8),
+            _buildDetailRow(Icons.access_time, _selectedTime!.format(context)),
+            const SizedBox(height: 8),
+            _buildDetailRow(Icons.timer, '$_totalDuration minutos'),
+            const SizedBox(height: 8),
+            _buildDetailRow(Icons.attach_money, '${_totalPrice.toStringAsFixed(2)}€'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancelar', style: GoogleFonts.poppins(color: const Color(0xFF143E40))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'Confirmar',
+              style: GoogleFonts.poppins(
+                color: const Color(0xFF143E40),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: const Color(0xFF143E40)),
+        const SizedBox(width: 12),
+        Text(text, style: GoogleFonts.poppins()),
+      ],
+    );
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
