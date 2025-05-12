@@ -316,38 +316,50 @@ class BusinessService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getBusinessesWithLocations() async {
-    try {
-      final response = await _supabase
-          .from('barbershops')
-          .select('id, name, address, city, cover_url, logo_url, rating, location')
-          .not('location', 'is', null)
-          .order('name', ascending: true);
+Future<List<Map<String, dynamic>>> getBusinessesWithLocations() async {
+  try {
+    final response = await _supabase
+        .from('barbershops')
+        .select('id, name, address, city, cover_url, logo_url, rating, location')
+        .not('location', 'is', null)
+        .order('name', ascending: true);
 
-      final businesses = List<Map<String, dynamic>>.from(response);
+    final businesses = List<Map<String, dynamic>>.from(response);
 
-      return businesses.map((business) {
-        if (business['location'] != null) {
-          try {
-            final locationStr = business['location'].toString();
+    return businesses.map((business) {
+      if (business['location'] != null) {
+        try {
+          final locationStr = business['location'].toString();
+          // Manejar ambos formatos:
+          // 1. Formato actual "lat,lon" (ej: "41.3917, 2.1649")
+          // 2. Formato PostGIS "POINT(lon lat)"
+          
+          // Intenta parsear como "lat,lon" primero
+          if (locationStr.contains(',')) {
+            final parts = locationStr.split(',');
+            business['latitude'] = double.parse(parts[0].trim());
+            business['longitude'] = double.parse(parts[1].trim());
+          } 
+          // Si no, intenta parsear como POINT
+          else if (locationStr.startsWith('POINT')) {
             final regex = RegExp(r'POINT\(([-\d.]+) ([-\d.]+)\)');
             final match = regex.firstMatch(locationStr);
-            
             if (match != null && match.groupCount >= 2) {
               business['longitude'] = double.parse(match.group(1)!);
               business['latitude'] = double.parse(match.group(2)!);
             }
-          } catch (e) {
-            debugPrint('Error al parsear ubicación: $e');
           }
+        } catch (e) {
+          debugPrint('Error al parsear ubicación: $e');
         }
-        return business;
-      }).toList();
-    } catch (e) {
-      debugPrint('Error al obtener negocios con ubicación: ${e.toString()}');
-      throw Exception('Error al obtener negocios con ubicación: ${e.toString()}');
-    }
+      }
+      return business;
+    }).toList();
+  } catch (e) {
+    debugPrint('Error al obtener negocios con ubicación: ${e.toString()}');
+    throw Exception('Error al obtener negocios con ubicación: ${e.toString()}');
   }
+}
 
   Future<List<Map<String, dynamic>>> getNearbyBusinesses(
     double latitude,

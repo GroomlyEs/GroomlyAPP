@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:groomlyes/business_service.dart';
+import 'package:groomlyes/business_service.dart' as business_service;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
@@ -31,7 +31,7 @@ void main() async {
       MultiProvider(
         providers: [
           Provider<AuthService>(create: (_) => AuthService()),
-          Provider<BusinessService>(create: (_) => BusinessService()),
+          Provider<business_service.BusinessService>(create: (_) => business_service.BusinessService()),
         ],
         child: const GroomlyESApp(),
       ),

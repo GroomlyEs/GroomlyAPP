@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'business_service.dart';
+import 'business_service.dart' as business_service;
 import 'reservations_history.dart';
 import 'map_screen.dart'; // Asegúrate de que este importe la clase correcta
 
@@ -52,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final session = _supabase.auth.currentSession;
       if (session != null) {
-        final businessService = Provider.of<BusinessService>(context, listen: false);
+        final businessService = Provider.of<business_service.BusinessService>(context, listen: false);
         final appointments = await businessService.getUserActiveAppointments(session.user.id);
         if (mounted) {
           setState(() {
