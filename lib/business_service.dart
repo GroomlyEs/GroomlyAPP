@@ -538,5 +538,69 @@ Future<List<Map<String, dynamic>>> getClockHistory(String barberId, {required Da
   double _degreesToRadians(double degrees) {
     return degrees * pi / 180;
   }
+
+  Future<List<Map<String, dynamic>>> getTopBarbershopsByProvince(String province) async {
+    try {
+      final response = await _supabase
+          .from('barbershops')
+          .select('id, name, address, city, logo_url, rating, location')
+          .ilike('city', '%$province%')
+          .order('rating', ascending: false)
+          .limit(5);
+
+      final businesses = List<Map<String, dynamic>>.from(response);
+
+      return businesses.map((business) {
+        if (business['location'] != null) {
+          try {
+            final locationStr = business['location'].toString();
+            final regex = RegExp(r'POINT\(([-\d.]+) ([-\d.]+)\)');
+            final match = regex.firstMatch(locationStr);
+            
+            if (match != null && match.groupCount >= 2) {
+              business['longitude'] = double.parse(match.group(1)!);
+              business['latitude'] = double.parse(match.group(2)!);
+            }
+          } catch (e) {
+            debugPrint('Error al parsear ubicación: $e');
+          }
+        }
+        return business;
+      }).toList();
+    } catch (e) {
+      debugPrint('Error al obtener top barberías: ${e.toString()}');
+      throw Exception('Error al obtener top barberías: ${e.toString()}');
+    }
+  }
+
+  Future<bool> isBusinessOpenNow(String barbershopId) async {
+    try {
+      final now = DateTime.now();
+      final weekday = now.weekday; // 1 (Monday) - 7 (Sunday)
+
+      final response = await _supabase
+          .from('opening_hours')
+          .select('open_at, close_at')
+          .eq('barbershop_id', barbershopId)
+          .eq('day_of_week', weekday)
+          .maybeSingle();
+
+      if (response == null) return false;
+
+      final openAt = _parseTimeString(response['open_at'].toString());
+      final closeAt = _parseTimeString(response['close_at'].toString());
+
+      final currentTime = TimeOfDay.fromDateTime(now);
+      
+      return currentTime.hour > openAt.hour || 
+             (currentTime.hour == openAt.hour && currentTime.minute >= openAt.minute) &&
+             (currentTime.hour < closeAt.hour || 
+             (currentTime.hour == closeAt.hour && currentTime.minute < closeAt.minute));
+    } catch (e) {
+      debugPrint('Error verificando horario: ${e.toString()}');
+      return false;
+    }
+  }
 }
+
 
