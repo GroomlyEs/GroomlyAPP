@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'business_service.dart' as business_service;
 import 'reservations_history.dart';
-import 'map_screen.dart'; // Asegúrate de que este importe la clase correcta
+import 'map_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -17,8 +17,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
   late Future<List<Map<String, dynamic>>> _businessesFuture;
   final PageController _pageController = PageController(viewportFraction: 0.8);
+  final TextEditingController _searchController = TextEditingController();
   int _currentPage = 0;
   int _activeReservationsCount = 0;
+  List<Map<String, dynamic>> _filteredBusinesses = [];
+  List<Map<String, dynamic>> _allBusinesses = [];
 
   @override
   void initState() {
@@ -41,19 +44,40 @@ class _HomeScreenState extends State<HomeScreen> {
           .select('id, name, address, city, cover_url, logo_url, rating')
           .order('name', ascending: true);
 
-      return List<Map<String, dynamic>>.from(response);
+      final businesses = List<Map<String, dynamic>>.from(response);
+      setState(() {
+        _allBusinesses = businesses;
+        _filteredBusinesses = businesses;
+      });
+      return businesses;
     } catch (e) {
       debugPrint('Error fetching businesses: $e');
       throw Exception('Error al cargar negocios');
     }
   }
 
+  void _filterBusinesses(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredBusinesses = _allBusinesses;
+      } else {
+        _filteredBusinesses = _allBusinesses
+            .where((business) =>
+                business['name']?.toLowerCase().contains(query.toLowerCase()) ??
+                false)
+            .toList();
+      }
+    });
+  }
+
   Future<void> _loadActiveReservationsCount() async {
     try {
       final session = _supabase.auth.currentSession;
       if (session != null) {
-        final businessService = Provider.of<business_service.BusinessService>(context, listen: false);
-        final appointments = await businessService.getUserActiveAppointments(session.user.id);
+        final businessService =
+            Provider.of<business_service.BusinessService>(context, listen: false);
+        final appointments =
+            await businessService.getUserActiveAppointments(session.user.id);
         if (mounted) {
           setState(() {
             _activeReservationsCount = appointments.length;
@@ -80,6 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _pageController.removeListener(_updateCurrentPage);
     _pageController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -90,13 +115,8 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header Section
             _buildHeader(),
-            
-            // Search Bar
             _buildSearchBar(),
-            
-            // Main Content
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refreshBusinesses,
@@ -104,21 +124,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: Column(
                     children: [
-                      // Businesses Carousel
                       _buildBusinessesCarousel(),
-                      
-                      // Divider
-                      _buildDivider(),
-                      
-                      // Proximity Search Button
+                      _buildDivider(context),
                       _buildProximitySearchButton(),
                     ],
                   ),
                 ),
               ),
             ),
-            
-            // Bottom Navigation
             _buildBottomNavigation(),
           ],
         ),
@@ -126,35 +139,80 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 40, 16, 20),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Column(
+Widget _buildHeader() {
+  return Stack(
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 40, 16, 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Welcome',
-              style: GoogleFonts.poppins(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF143E40),
-              ),
-            ),
-            Text(
-              'to groomly!',
-              style: GoogleFonts.poppins(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF143E40),
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Welcome',
+                  style: GoogleFonts.poppins(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF143E40),
+                  ),
+                ),
+                Text(
+                  'to groomly!',
+                  style: GoogleFonts.poppins(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF143E40),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
-    );
-  }
+      // Indicativo con flecha y texto
+      Positioned(
+        top: 70,
+        right: 20,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF143E40),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Add business',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.add,
+                color: Colors.white,
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
 
   Widget _buildSearchBar() {
     return Padding(
@@ -165,6 +223,8 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: TextField(
+          controller: _searchController,
+          onChanged: _filterBusinesses,
           decoration: InputDecoration(
             hintText: 'Search new places...',
             border: InputBorder.none,
@@ -178,7 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBusinessesCarousel() {
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 16),
+      padding: const EdgeInsets.only(top: 16, bottom: 12),
       child: SizedBox(
         height: 250,
         child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -188,20 +248,19 @@ class _HomeScreenState extends State<HomeScreen> {
               return const Center(child: CircularProgressIndicator());
             } else if (snapshot.hasError) {
               return Center(child: Text('Error: ${snapshot.error}'));
-            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            } else if (_filteredBusinesses.isEmpty) {
               return const Center(child: Text('No se encontraron negocios'));
             }
 
-            final businesses = snapshot.data!;
             return Column(
               children: [
                 SizedBox(
-                  height: 220,
+                  height: 230,
                   child: PageView.builder(
                     controller: _pageController,
-                    itemCount: businesses.length,
+                    itemCount: _filteredBusinesses.length,
                     itemBuilder: (context, index) {
-                      return _buildBusinessCard(context, businesses[index]);
+                      return _buildBusinessCard(context, _filteredBusinesses[index]);
                     },
                   ),
                 ),
@@ -209,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(
-                    businesses.length,
+                    _filteredBusinesses.length,
                     (index) => Container(
                       width: 8,
                       height: 8,
@@ -231,9 +290,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDivider() {
+  Widget _buildDivider(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 20),
       child: Row(
         children: [
           Expanded(
@@ -272,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const MapScreen(), // Cambiado de ModernMapScreen a MapScreen
+              builder: (context) => const MapScreen(),
             ),
           );
         },
@@ -332,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const MapScreen(), // Cambiado de ModernMapScreen a MapScreen
+                      builder: (context) => const MapScreen(),
                     ),
                   );
                 },
@@ -402,7 +461,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               child: const Icon(
-                Icons.search,
+                Icons.qr_code,
                 color: Colors.white,
                 size: 28,
               ),
