@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'business.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({Key? key}) : super(key: key);
@@ -133,6 +134,17 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  void _centerMapOnBarbershop(Map<String, dynamic> barbershop) {
+    if (barbershop['latitude'] != null && barbershop['longitude'] != null) {
+      final position = LatLng(barbershop['latitude'], barbershop['longitude']);
+      _mapController.animateCamera(
+        CameraUpdate.newLatLngZoom(position, 16), // Zoom ajustado para ver el negocio
+      );
+    } else {
+      debugPrint('La ubicación del negocio no está disponible.');
+    }
+  }
+
   void _showBarbershopDetails(BuildContext context, Map<String, dynamic> barbershop) {
     final id = barbershop['id'].toString();
     final isOpen = _barbershopsOpenStatus[id] ?? false;
@@ -140,44 +152,43 @@ class _MapScreenState extends State<MapScreen> {
     showModalBottomSheet(
       context: context,
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
+        return Container(
+          padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (barbershop['logo_url'] != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        barbershop['logo_url'],
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
+                    Container(
+                      width: 80,
+                      height: 80,
+                      margin: const EdgeInsets.only(right: 16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        image: DecorationImage(
+                          image: NetworkImage(barbershop['logo_url']),
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
-                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          barbershop['name'],
+                          barbershop['name'] ?? 'Sin nombre',
                           style: const TextStyle(
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
-                            Icon(
-                              Icons.star,
-                              color: Colors.amber,
-                              size: 20,
-                            ),
+                            const Icon(Icons.star, color: Colors.amber, size: 20),
                             const SizedBox(width: 4),
                             Text(
                               barbershop['rating']?.toStringAsFixed(1) ?? 'N/A',
@@ -203,7 +214,7 @@ class _MapScreenState extends State<MapScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                         Text(
                           barbershop['address'] ?? '',
                           style: TextStyle(color: Colors.grey[600]),
@@ -214,34 +225,54 @@ class _MapScreenState extends State<MapScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context); // Cerrar el modal
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => BusinessPage(barbershopId: id),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFF143E40)),
                       ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      child: const Text(
+                        'Cerrar',
+                        style: TextStyle(color: Color(0xFF143E40)),
+                      ),
                     ),
                   ),
-                  child: const Text(
-                    'Ver Barbería',
-                    style: TextStyle(fontSize: 16),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context); // Cerrar el modal
+                        _navigateToBusinessScreen(context, barbershop['id']);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF143E40),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text(
+                        'Visitar sitio',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  void _navigateToBusinessScreen(BuildContext context, String businessId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BusinessScreen(),
+        settings: RouteSettings(arguments: businessId),
+      ),
     );
   }
 
@@ -293,7 +324,8 @@ class _MapScreenState extends State<MapScreen> {
                 barbershops: _topBarbershops,
                 openStatus: _barbershopsOpenStatus,
                 onBarbershopTap: (barbershop) {
-                  _showBarbershopDetails(context, barbershop);
+                  _centerMapOnBarbershop(barbershop); // Centrar el mapa en el negocio
+                  _showBarbershopDetails(context, barbershop); // Mostrar detalles
                 },
                 onClose: () {
                   setState(() {
