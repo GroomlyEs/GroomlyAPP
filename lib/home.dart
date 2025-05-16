@@ -174,7 +174,7 @@ Widget _buildHeader() {
       ),
       // Indicativo con flecha y texto
       Positioned(
-        top: 70,
+        top: 40,
         right: 20,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

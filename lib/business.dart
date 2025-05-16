@@ -26,6 +26,7 @@ class _BusinessScreenState extends State<BusinessScreen> {
   late Future<Map<String, dynamic>> _businessFuture;
   late Future<List<Map<String, dynamic>>> _barbersFuture;
   late Future<List<Map<String, dynamic>>> _servicesFuture;
+  late Future<List<Map<String, dynamic>>> _galleryFuture;
   
   // Estado de la reserva
   DateTime? _selectedDate;
@@ -82,6 +83,7 @@ class _BusinessScreenState extends State<BusinessScreen> {
       _businessFuture = businessService.getBusinessDetails(_businessId);
       _barbersFuture = businessService.getBarbers(_businessId);
       _servicesFuture = businessService.getServices(_businessId);
+      _galleryFuture = businessService.getBusinessGallery(_businessId);
     });
   }
 
@@ -274,60 +276,65 @@ class _BusinessScreenState extends State<BusinessScreen> {
   }
 
   // ========== COMPONENTES UI ==========
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          FutureBuilder<Map<String, dynamic>>(
-            future: _businessFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
-              }
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: Colors.white,
+    appBar: _buildAppBar(),
+    body: Stack(
+      children: [
+        FutureBuilder(
+          future: Future.wait([_businessFuture, _galleryFuture]),
+          builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
 
-              final business = snapshot.data!;
-              final images = [
-                business['cover_url'],
-                business['logo_url'],
-              ].whereType<String>().toList();
+            final business = snapshot.data![0] as Map<String, dynamic>;
+            final gallery = snapshot.data![1] as List<Map<String, dynamic>>;
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.only(bottom: 100), // Espacio para el botón fijo
-                child: Column(
-                  children: [
-                    if (images.isNotEmpty) _buildImageGallery(images),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildBusinessHeader(business),
-                          const SizedBox(height: 24),
-                          _buildReservationForm(),
-                        ],
-                      ),
+            final businessImages = [
+              business['cover_url'],
+              business['logo_url'],
+            ].whereType<String>().toList();
+
+            final galleryImages = gallery.map((img) => img['image_url'] as String).toList();
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 100), // Espacio para el botón fijo
+              child: Column(
+                children: [
+                  if (businessImages.isNotEmpty || galleryImages.isNotEmpty)
+                    _buildImageGallery(businessImages, galleryImages),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildBusinessHeader(business),
+                        const SizedBox(height: 24),
+                        _buildReservationForm(),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildBottomActionBar(),
-          ),
-        ],
-      ),
-    );
-  }
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: _buildBottomActionBar(),
+        ),
+      ],
+    ),
+  );
+}
 
   AppBar _buildAppBar() {
     return AppBar(
@@ -382,53 +389,55 @@ class _BusinessScreenState extends State<BusinessScreen> {
     );
   }
 
-  Widget _buildImageGallery(List<String> images) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
-      child: Column(
-        children: [
-          SizedBox(
-            width: double.infinity,
-            height: 220,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: PageView.builder(
-                controller: _imageController,
-                itemCount: images.length,
-                onPageChanged: (index) => setState(() => _currentImageIndex = index),
-                itemBuilder: (context, index) => Image.network(
-                  images[index],
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    color: Colors.grey[200],
-                    child: const Icon(Icons.broken_image, color: Colors.grey),
-                  ),
+Widget _buildImageGallery(List<String> businessImages, List<String> galleryImages) {
+  final allImages = [...businessImages, ...galleryImages];
+
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+    child: Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: 220,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: PageView.builder(
+              controller: _imageController,
+              itemCount: allImages.length,
+              onPageChanged: (index) => setState(() => _currentImageIndex = index),
+              itemBuilder: (context, index) => Image.network(
+                allImages[index],
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: Colors.grey[200],
+                  child: const Icon(Icons.broken_image, color: Colors.grey),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(
-              images.length,
-              (index) => Container(
-                width: 8,
-                height: 8,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _currentImageIndex == index
-                      ? const Color(0xFF143E40)
-                      : Colors.grey.withOpacity(0.4),
-                ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            allImages.length,
+            (index) => Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _currentImageIndex == index
+                    ? const Color(0xFF143E40)
+                    : Colors.grey.withOpacity(0.4),
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildBusinessHeader(Map<String, dynamic> business) {
     return Column(

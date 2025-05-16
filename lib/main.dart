@@ -100,8 +100,8 @@ class GroomlyESApp extends StatelessWidget {
   ThemeData _buildAppTheme() {
     return ThemeData(
       colorScheme: ColorScheme.light(
-        primary: const Color(0xFF143E40),
-        secondary: const Color(0xFF1A535C),
+        primary: const Color.fromARGB(255, 86, 27, 38),
+        secondary: const Color.fromARGB(255, 86, 27, 38),
         surface: Colors.white,
         background: Colors.white,
       ),
@@ -111,7 +111,7 @@ class GroomlyESApp extends StatelessWidget {
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.white,
-        iconTheme: IconThemeData(color: Color(0xFF143E40)),
+        iconTheme: IconThemeData(color: Color.fromARGB(255, 86, 27, 38)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -200,7 +200,7 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF143E40),
+      backgroundColor: const Color.fromARGB(255, 86, 27, 38),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -249,7 +249,7 @@ class _HomePageWidgetState extends State<HomePageWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF143E40),
+      backgroundColor: const Color.fromARGB(255, 86, 27, 38),
       body: Stack(
         children: [
           _buildMainContent(),
