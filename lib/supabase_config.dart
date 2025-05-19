@@ -1,6 +1,6 @@
 class ApiConfig {
-   static const String baseUrl = 'http://10.0.2.2:5000';
-  //  static const String baseUrl = 'http://172.17.41.28:5000';
+  //static const String baseUrl = 'http://10.0.2.2:5000';
+    static const String baseUrl = 'http://172.17.41.28:5000';
 
    // Para emulador Android
   static const String loginEndpoint = '/auth/login';

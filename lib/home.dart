@@ -156,7 +156,7 @@ Widget _buildHeader() {
                   style: GoogleFonts.poppins(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF143E40),
+                    color: const Color(0xFF254155),
                   ),
                 ),
                 Text(
@@ -164,7 +164,7 @@ Widget _buildHeader() {
                   style: GoogleFonts.poppins(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF143E40),
+                    color: const Color(0xFF254155),
                   ),
                 ),
               ],
@@ -179,7 +179,7 @@ Widget _buildHeader() {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFF143E40),
+            color: const Color(0xFF254155),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
@@ -382,11 +382,11 @@ Widget _buildHeader() {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               IconButton(
-                icon: const Icon(Icons.home, color: Color(0xFF143E40), size: 32),
+                icon: const Icon(Icons.home, color: Color(0xFF254155), size: 32),
                 onPressed: () {},
               ),
               IconButton(
-                icon: const Icon(Icons.search, color: Color(0xFF143E40), size: 32),
+                icon: const Icon(Icons.search, color: Color(0xFF254155), size: 32),
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -400,7 +400,7 @@ Widget _buildHeader() {
               Stack(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.calendar_today, color: Color(0xFF143E40), size: 32),
+                    icon: const Icon(Icons.calendar_today, color: Color(0xFF254155), size: 32),
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -437,7 +437,7 @@ Widget _buildHeader() {
                 ],
               ),
               IconButton(
-                icon: const Icon(Icons.person, color: Color(0xFF143E40), size: 32),
+                icon: const Icon(Icons.person, color: Color(0xFF254155), size: 32),
                 onPressed: () {
                   Navigator.pushNamed(context, '/account');
                 },
@@ -450,7 +450,7 @@ Widget _buildHeader() {
               width: 60,
               height: 60,
               decoration: BoxDecoration(
-                color: const Color(0xFF143E40),
+                color: const Color(0xFF254155),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,11 +16,24 @@ class BusinessScreen extends StatefulWidget {
   _BusinessScreenState createState() => _BusinessScreenState();
 }
 
-class _BusinessScreenState extends State<BusinessScreen> {
-  // Dependencias
+class _BusinessScreenState extends State<BusinessScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  // Dependencias y controladores
   final SupabaseClient _supabase = Supabase.instance.client;
-  final PageController _imageController = PageController();
   final TextEditingController _notesController = TextEditingController();
+  
+  // Para el slider de imágenes
+  final PageController _imageController = PageController(viewportFraction: 0.98);
+  final ValueNotifier<int> _currentImageNotifier = ValueNotifier<int>(0);
+  List<String> _cachedImages = [];
+
+  // Para el dropdown de barberos
+  final LayerLink _barberDropdownLink = LayerLink();
+  OverlayEntry? _barberDropdownEntry;
+  bool _isBarberDropdownOpen = false;
+  final _barberDropdownKey = GlobalKey();
 
   // Estado del negocio
   late String _businessId;
@@ -37,7 +51,6 @@ class _BusinessScreenState extends State<BusinessScreen> {
   double _totalPrice = 0.0;
   
   // Estado UI
-  int _currentImageIndex = 0;
   bool _isSubmitting = false;
   int _activeReservationsCount = 0;
 
@@ -62,8 +75,101 @@ class _BusinessScreenState extends State<BusinessScreen> {
   @override
   void dispose() {
     _imageController.dispose();
+    _currentImageNotifier.dispose();
     _notesController.dispose();
+    _removeBarberDropdown();
     super.dispose();
+  }
+
+  void _removeBarberDropdown() {
+    _barberDropdownEntry?.remove();
+    _barberDropdownEntry = null;
+    _isBarberDropdownOpen = false;
+  }
+
+  void _toggleBarberDropdown(List<Map<String, dynamic>> barbers) {
+    if (_isBarberDropdownOpen) {
+      _removeBarberDropdown();
+      return;
+    }
+
+    final renderBox = _barberDropdownKey.currentContext?.findRenderObject() as RenderBox?;
+    final size = renderBox?.size ?? Size.zero;
+    final offset = renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+
+    _barberDropdownEntry = OverlayEntry(
+      builder: (context) => GestureDetector(
+        onTap: _removeBarberDropdown,
+        child: Container(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              Positioned(
+                width: size.width,
+                left: offset.dx,
+                top: offset.dy + size.height + 5,
+                child: CompositedTransformFollower(
+                  link: _barberDropdownLink,
+                  showWhenUnlinked: false,
+                  offset: Offset(0, size.height + 5),
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.4,
+                      ),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        itemCount: barbers.length,
+                        itemBuilder: (context, index) {
+                          final barber = barbers[index];
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedBarberId = barber['id'];
+                                _selectedDate = null;
+                                _selectedTime = null;
+                              });
+                              _removeBarberDropdown();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              child: Text(
+                                barber['name'] ?? 'Desconocido',
+                                style: GoogleFonts.poppins(),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_barberDropdownEntry!);
+    _isBarberDropdownOpen = true;
   }
 
   Future<void> _loadActiveReservationsCount() async {
@@ -87,7 +193,6 @@ class _BusinessScreenState extends State<BusinessScreen> {
     });
   }
 
-  // ========== MÉTODOS DE SELECCIÓN ==========
   Future<void> _selectDate(BuildContext context) async {
     if (_selectedBarberId == null) {
       _showSnackBar('Selecciona un barbero primero');
@@ -179,7 +284,6 @@ class _BusinessScreenState extends State<BusinessScreen> {
     });
   }
 
-  // ========== MÉTODOS DE CONFIRMACIÓN ==========
   Future<void> _confirmOrder() async {
     if (_selectedDate == null || _selectedTime == null || 
         _selectedBarberId == null || _selectedServices.isEmpty) {
@@ -234,7 +338,6 @@ class _BusinessScreenState extends State<BusinessScreen> {
     }
   }
 
-  // ========== MÉTODOS AUXILIARES ==========
   TimeOfDay _findClosestAvailableTime(List<TimeOfDay> availableTimes) {
     final now = TimeOfDay.now();
     for (final time in availableTimes) {
@@ -261,7 +364,7 @@ class _BusinessScreenState extends State<BusinessScreen> {
     return Theme(
       data: Theme.of(context).copyWith(
         colorScheme: const ColorScheme.light(
-          primary: Color(0xFF143E40),
+          primary: Color(0xFF254155),
           onPrimary: Colors.white,
           surface: Colors.white,
           onSurface: Colors.black,
@@ -275,66 +378,66 @@ class _BusinessScreenState extends State<BusinessScreen> {
     );
   }
 
-  // ========== COMPONENTES UI ==========
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: Colors.white,
-    appBar: _buildAppBar(),
-    body: Stack(
-      children: [
-        FutureBuilder(
-          future: Future.wait([_businessFuture, _galleryFuture]),
-          builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text('Error: ${snapshot.error}'));
-            }
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: _buildAppBar(),
+      body: Stack(
+        children: [
+          FutureBuilder(
+            future: Future.wait([_businessFuture, _galleryFuture]),
+            builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
 
-            final business = snapshot.data![0] as Map<String, dynamic>;
-            final gallery = snapshot.data![1] as List<Map<String, dynamic>>;
+              final business = snapshot.data![0] as Map<String, dynamic>;
+              final gallery = snapshot.data![1] as List<Map<String, dynamic>>;
 
-            final businessImages = [
-              business['cover_url'],
-              business['logo_url'],
-            ].whereType<String>().toList();
+              final businessImages = [
+                business['cover_url'],
+                business['logo_url'],
+              ].whereType<String>().toList();
 
-            final galleryImages = gallery.map((img) => img['image_url'] as String).toList();
+              final galleryImages = gallery.map((img) => img['image_url'] as String).toList();
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 100), // Espacio para el botón fijo
-              child: Column(
-                children: [
-                  if (businessImages.isNotEmpty || galleryImages.isNotEmpty)
-                    _buildImageGallery(businessImages, galleryImages),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildBusinessHeader(business),
-                        const SizedBox(height: 24),
-                        _buildReservationForm(),
-                      ],
+              return SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 100),
+                child: Column(
+                  children: [
+                    if (businessImages.isNotEmpty || galleryImages.isNotEmpty)
+                      _buildImageGallery(businessImages, galleryImages),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildBusinessHeader(business),
+                          const SizedBox(height: 24),
+                          _buildReservationForm(),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: _buildBottomActionBar(),
-        ),
-      ],
-    ),
-  );
-}
+                  ],
+                ),
+              );
+            },
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _buildBottomActionBar(),
+          ),
+        ],
+      ),
+    );
+  }
 
   AppBar _buildAppBar() {
     return AppBar(
@@ -350,7 +453,7 @@ Widget build(BuildContext context) {
           return Text(
             snapshot.data?['name'] ?? 'Negocio',
             style: GoogleFonts.poppins(
-              color: const Color(0xFF143E40),
+              color: const Color(0xFF254155),
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
@@ -389,55 +492,93 @@ Widget build(BuildContext context) {
     );
   }
 
-Widget _buildImageGallery(List<String> businessImages, List<String> galleryImages) {
-  final allImages = [...businessImages, ...galleryImages];
+  Widget _buildImageGallery(List<String> businessImages, List<String> galleryImages) {
+    _cachedImages = [...businessImages, ...galleryImages];
+    
+    if (_cachedImages.isEmpty) {
+      return const Center(
+        child: Text('No hay imágenes disponibles', style: TextStyle(color: Colors.grey)),
+      );
+    }
 
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
-    child: Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: 220,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: PageView.builder(
-              controller: _imageController,
-              itemCount: allImages.length,
-              onPageChanged: (index) => setState(() => _currentImageIndex = index),
-              itemBuilder: (context, index) => Image.network(
-                allImages[index],
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  color: Colors.grey[200],
-                  child: const Icon(Icons.broken_image, color: Colors.grey),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 220,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                if (notification is ScrollUpdateNotification) {
+                  final page = _imageController.page?.round() ?? 0;
+                  if (_currentImageNotifier.value != page) {
+                    _currentImageNotifier.value = page;
+                  }
+                }
+                return false;
+              },
+              child: PageView.builder(
+                controller: _imageController,
+                itemCount: _cachedImages.length,
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: _cachedImages[index],
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: Colors.grey[200],
+                          child: const Center(child: CircularProgressIndicator()),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey[200],
+                          child: const Icon(Icons.broken_image, color: Colors.grey),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder<int>(
+            valueListenable: _currentImageNotifier,
+            builder: (context, value, child) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  _cachedImages.length,
+                  (index) => GestureDetector(
+                    onTap: () => _imageController.animateToPage(
+                      index,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    ),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: value == index 
+                            ? const Color(0xFF143E40)
+                            : Colors.grey.withOpacity(0.4),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(
-            allImages.length,
-            (index) => Container(
-              width: 8,
-              height: 8,
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _currentImageIndex == index
-                    ? const Color(0xFF143E40)
-                    : Colors.grey.withOpacity(0.4),
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
 
   Widget _buildBusinessHeader(Map<String, dynamic> business) {
     return Column(
@@ -448,7 +589,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
           style: GoogleFonts.poppins(
             fontSize: 22,
             fontWeight: FontWeight.bold,
-            color: const Color(0xFF143E40),
+            color: const Color(0xFF254155),
           ),
         ),
         const SizedBox(height: 8),
@@ -474,7 +615,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
               child: Text(
                 'ABIERTO',
                 style: GoogleFonts.poppins(
-                  color: const Color(0xFF143E40),
+                  color: const Color(0xFF254155),
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -547,7 +688,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
     return Text(
       title,
       style: GoogleFonts.poppins(
-        color: const Color(0xFF143E40),
+        color: const Color(0xFF254155),
         fontWeight: FontWeight.w600,
         fontSize: 16,
       ),
@@ -555,44 +696,47 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
   }
 
   Widget _buildBarberDropdown(List<Map<String, dynamic>> barbers) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: DropdownButton<String>(
-        value: _selectedBarberId,
-        hint: Text(
-          'Seleccionar barbero',
-          style: GoogleFonts.poppins(color: Colors.grey[600]),
-        ),
-        isExpanded: true,
-        underline: const SizedBox(),
-        items: barbers.map((barber) {
-          return DropdownMenuItem<String>(
-            value: barber['id'],
-            child: Text(
-              barber['name'] ?? 'Desconocido',
-              style: GoogleFonts.poppins(),
+    return CompositedTransformTarget(
+      link: _barberDropdownLink,
+      child: Container(
+        key: _barberDropdownKey,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[300]!),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-          );
-        }).toList(),
-        onChanged: (value) {
-          setState(() {
-            _selectedBarberId = value;
-            _selectedDate = null;
-            _selectedTime = null;
-          });
-        },
+          ],
+        ),
+        child: InkWell(
+          onTap: () => _toggleBarberDropdown(barbers),
+          child: Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    _selectedBarberId != null
+                        ? barbers.firstWhere((b) => b['id'] == _selectedBarberId)['name'] ?? 'Seleccionar barbero'
+                        : 'Seleccionar barbero',
+                    style: GoogleFonts.poppins(
+                      color: _selectedBarberId != null ? Colors.black : Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ),
+              Icon(
+                _isBarberDropdownOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                color: Colors.grey,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -733,7 +877,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
                         Text(
                           service['name'] ?? 'Sin nombre',
                           style: GoogleFonts.poppins(
-                            color: const Color(0xFF143E40),
+                            color: const Color(0xFF254155),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -750,7 +894,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
                   Text(
                     '${(service['price'] as num).toStringAsFixed(2)}€',
                     style: GoogleFonts.poppins(
-                      color: const Color(0xFF143E40),
+                      color: const Color(0xFF254155),
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -820,7 +964,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
-                    color: const Color(0xFF143E40),
+                    color: const Color(0xFF254155),
                   ),
                 ),
               ],
@@ -831,7 +975,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
             child: ElevatedButton(
               onPressed: _isSubmitting ? null : _confirmOrder,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF143E40),
+                backgroundColor: const Color(0xFF254155),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
@@ -862,7 +1006,6 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
     );
   }
 
-  // ========== DIÁLOGOS Y SNACKBARS ==========
   Future<bool?> _showConfirmationDialog({required String title, required String content}) async {
     return await showDialog<bool>(
       context: context,
@@ -871,7 +1014,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
         title: Text(
           title,
           style: GoogleFonts.poppins(
-            color: const Color(0xFF143E40),
+            color: const Color(0xFF254155),
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -889,7 +1032,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
             child: Text(
               'Continuar',
               style: GoogleFonts.poppins(
-                color: const Color(0xFF143E40),
+                color: const Color(0xFF254155),
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -907,7 +1050,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
         title: Text(
           'Confirmar Reserva',
           style: GoogleFonts.poppins(
-            color: const Color(0xFF143E40),
+            color: const Color(0xFF254155),
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -937,7 +1080,7 @@ Widget _buildImageGallery(List<String> businessImages, List<String> galleryImage
             child: Text(
               'Confirmar',
               style: GoogleFonts.poppins(
-                color: const Color(0xFF143E40),
+                color: const Color(0xFF254155),
                 fontWeight: FontWeight.bold,
               ),
             ),
